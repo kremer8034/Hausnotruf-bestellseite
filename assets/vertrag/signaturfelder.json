@@ -1,0 +1,162 @@
+[
+ {
+  "name": "Schluessel Unterschriftenfeld 1",
+  "page": 5,
+  "rect": [
+   280.63,
+   346.054,
+   382.677,
+   366.03
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 2",
+  "page": 5,
+  "rect": [
+   450.666,
+   346.054,
+   552.713,
+   366.03
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 3",
+  "page": 5,
+  "rect": [
+   280.63,
+   318.108,
+   382.677,
+   338.085
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 4",
+  "page": 5,
+  "rect": [
+   450.666,
+   318.108,
+   552.713,
+   338.085
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 5",
+  "page": 5,
+  "rect": [
+   280.63,
+   290.163,
+   382.677,
+   310.139
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 6",
+  "page": 5,
+  "rect": [
+   450.666,
+   290.163,
+   552.713,
+   310.139
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 7",
+  "page": 5,
+  "rect": [
+   280.63,
+   262.217,
+   382.677,
+   282.194
+  ]
+ },
+ {
+  "name": "Schluessel Unterschriftenfeld 8",
+  "page": 5,
+  "rect": [
+   450.666,
+   262.217,
+   552.713,
+   282.194
+  ]
+ },
+ {
+  "name": "Unterschriftenfeld 5",
+  "page": 8,
+  "rect": [
+   269.291,
+   151.402,
+   524.409,
+   185.552
+  ]
+ },
+ {
+  "name": "Unterschriftenfeld 8",
+  "page": 18,
+  "rect": [
+   226.772,
+   468.799,
+   552.756,
+   502.949
+  ]
+ },
+ {
+  "name": "Unterschriftenfeld 9",
+  "page": 18,
+  "rect": [
+   226.772,
+   46.8123,
+   552.756,
+   80.9619
+  ]
+ },
+ {
+  "name": "Unterschriftenfeld 10",
+  "page": 19,
+  "rect": [
+   226.772,
+   57.6929,
+   552.756,
+   91.8425
+  ]
+ },
+ {
+  "name": "Unterschriftenfeld 11",
+  "page": 20,
+  "rect": [
+   226.772,
+   57.6929,
+   552.756,
+   91.8425
+  ]
+ },
+ {
+  "name": "Unterschriftsfeld 10",
+  "page": 25,
+  "rect": [
+   56.6929,
+   235.941,
+   272.835,
+   301.621
+  ]
+ },
+ {
+  "name": "Unterschriftsfeld 11",
+  "page": 25,
+  "rect": [
+   333.071,
+   235.941,
+   549.213,
+   301.621
+  ]
+ },
+ {
+  "name": "Unterschriftsfeld 12",
+  "page": 27,
+  "rect": [
+   56.6929,
+   57.6929,
+   297.638,
+   100.213
+  ]
+ }
+]
