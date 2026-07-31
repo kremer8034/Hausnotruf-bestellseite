@@ -204,6 +204,8 @@ export function kundenFelder(
     gsm: "GSM-Anschluss",
     voip: "Breitbandanschluss mit VoIP",
     msan: "MSAN-POTS",
+    // Der Kunde wusste es nicht – der Techniker trägt es beim Termin nach.
+    unbekannt: "Wird bei der Installation vor Ort festgestellt",
   }[b.anschlussart];
   f["Voraussetzung_GSM"] = b.anschlussart === "gsm";
   f["Voraussetzung_Voip"] = b.anschlussart === "voip";

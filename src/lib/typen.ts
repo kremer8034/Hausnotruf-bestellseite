@@ -4,7 +4,7 @@ import { OptionId, PaketId } from "./katalog";
 
 export type Anrede = "Frau" | "Herr" | "Divers";
 export type Pflegegrad = "ohne" | "1" | "2" | "3" | "4" | "5";
-export type Anschlussart = "gsm" | "voip" | "msan";
+export type Anschlussart = "gsm" | "voip" | "msan" | "unbekannt";
 
 export const BEZUGSARTEN = [
   "Ehemann/Ehefrau",
@@ -178,9 +178,9 @@ export const STATUS_LABEL: Record<VertragsStatus, string> = {
 /** Schritte der Kundenstrecke – Grundlage der Trichteransicht. */
 export const SCHRITTE = [
   "start",
+  "kostentraeger",
   "paket",
   "teilnehmer",
-  "kostentraeger",
   "anschluss",
   "kontaktpersonen",
   "zugang",
@@ -192,9 +192,9 @@ export type Schritt = (typeof SCHRITTE)[number];
 
 export const SCHRITT_LABEL: Record<Schritt, string> = {
   start: "Startseite / Preisrechner",
+  kostentraeger: "Pflegegrad und Kostenträger",
   paket: "Paketauswahl",
   teilnehmer: "Angaben zur Person",
-  kostentraeger: "Pflegegrad und Kostenträger",
   anschluss: "Technischer Anschluss",
   kontaktpersonen: "Kontaktpersonen",
   zugang: "Wohnungszugang und Notfallinfos",
