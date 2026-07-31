@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Textfeld } from "./formular";
@@ -56,6 +57,12 @@ export function Anmeldeformular({ hinweis }: { hinweis?: string }) {
       <Knopf breit type="submit" disabled={laeuft}>
         {laeuft ? "Anmeldung läuft …" : "Anmelden"}
       </Knopf>
+      <Link
+        href="/passwort-vergessen"
+        className="block text-center text-sm text-tinte-500 hover:text-brk-700"
+      >
+        Passwort vergessen?
+      </Link>
     </form>
   );
 }

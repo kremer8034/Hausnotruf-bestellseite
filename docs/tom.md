@@ -32,6 +32,25 @@ Nachweise sind zur Akte zu nehmen.
   des Kreisverbands. Supabase Auth unterstützt sie; sie lässt sich ohne
   Codeänderung nachrüsten und ist bei Zugriff auf Bank- und Gesundheitsdaten
   zu empfehlen.
+- **Passwort-Rücksetzung** läuft über einen Einmal-Link, der per E-Mail
+  zugestellt wird:
+  - Gespeichert wird nur der SHA-256-Abdruck des Tokens. Wer die Tabelle oder
+    eine Sicherung liest, kann daraus keinen gültigen Link bauen.
+  - Der Link gilt 60 Minuten und lässt sich genau einmal verwenden. Mit der
+    Verwendung verfallen zugleich alle anderen offenen Links desselben Zugangs.
+  - Höchstens drei Anfragen je Zugang und Stunde, damit sich fremde Postfächer
+    nicht zumüllen lassen.
+  - Die Antwort ist immer dieselbe, unabhängig davon, ob es den Zugang gibt.
+    Sonst ließe sich über die Route ermitteln, welche Adressen im Kreisverband
+    einen Zugang haben.
+  - Nach erfolgreicher Änderung werden **alle bestehenden Anmeldungen beendet**
+    und der Zugang per E-Mail informiert. So fällt es auf, wenn jemand Fremdes
+    das Passwort gewechselt hat.
+  - Mindestlänge 10 Zeichen; die E-Mail-Adresse und offensichtliche Wörter
+    sind ausgeschlossen.
+- **Offen:** In Supabase ist der Abgleich gegen bekannte Passwortlecks
+  (HaveIBeenPwned) noch abgeschaltet. Er lässt sich unter
+  Authentication → Policies mit einem Schalter aktivieren und sollte es auch.
 
 ### Zugriffskontrolle
 
@@ -124,6 +143,7 @@ Nachweise sind zur Akte zu nehmen.
 | Punkt | Bewertung |
 |---|---|
 | Zwei-Faktor-Anmeldung nicht aktiv | Bewusste Entscheidung des Kreisverbands, jederzeit nachrüstbar |
+| Abgleich gegen bekannte Passwortlecks abgeschaltet | Ein Schalter in Supabase, sollte aktiviert werden |
 | PDF-Anhänge ohne Passwortschutz | Bewusste Entscheidung des Kreisverbands, Restrisiko beim Mailtransport |
 | Automatische Löschung nach zehn Jahren fehlt | Erfordert das Erfassen des Vertragsendes |
 | Auftragsverarbeitungsverträge Vercel und Supabase | Noch abzuschließen |

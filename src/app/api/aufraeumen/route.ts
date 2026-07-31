@@ -84,7 +84,16 @@ export async function GET(anfrage: NextRequest) {
       .select("id");
     geloescht = alte?.length ?? 0;
 
-    return NextResponse.json({ ok: true, erinnert, geloescht });
+    // Abgelaufene Links zum Zurücksetzen des Passworts verfallen nach sieben Tagen.
+    let passwortAnfragen = 0;
+    try {
+      const { data } = await db().rpc("raeume_passwort_anfragen");
+      passwortAnfragen = (data as number | null) ?? 0;
+    } catch (fehler) {
+      console.error("Passwort-Anfragen aufräumen fehlgeschlagen:", fehler);
+    }
+
+    return NextResponse.json({ ok: true, erinnert, geloescht, passwortAnfragen });
   } catch (fehler) {
     console.error("Aufräumen fehlgeschlagen:", fehler);
     return NextResponse.json({ fehler: (fehler as Error).message }, { status: 500 });

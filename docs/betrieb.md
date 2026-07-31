@@ -54,6 +54,21 @@ select id, 'Daniel Zimmermann', 'admin'
 from auth.users where email = 'daniel.zimmermann@example.de';
 ```
 
+### Passwort vergessen
+
+Zugänge können sich selbst helfen: Auf der Anmeldeseite führt **Passwort
+vergessen?** zu einem Formular, das einen Einmal-Link per E-Mail verschickt.
+Der Link gilt eine Stunde und lässt sich nur einmal verwenden; nach der
+Änderung werden alle bestehenden Anmeldungen beendet.
+
+**Voraussetzung ist ein hinterlegter SMTP-Zugang** (Backoffice → Einstellungen).
+Ohne ihn wird zwar ein Link erzeugt, aber nicht zugestellt — und die Seite
+meldet aus Sicherheitsgründen trotzdem Erfolg. Kommt keine E-Mail an, lohnt
+zuerst ein Blick auf die SMTP-Einstellungen und den Spam-Ordner.
+
+Notfalls setzt ein Administrator das Passwort direkt in Supabase zurück:
+**Authentication → Users → ⋯ → Reset password**.
+
 Einen Zugang sperren, ohne ihn zu löschen:
 
 ```sql
