@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useCallback, useEffect } from "react";
 
 import {
   OptionId,
@@ -795,14 +795,26 @@ export function SchrittZahlung({ daten, setze, fehler }: SchrittProps) {
   const teilnehmerZahlt = daten.zahlungspflichtigerIstTeilnehmer ?? true;
   const t = daten.teilnehmer;
 
-  function uebernehmeTeilnehmer() {
+  const uebernehmeTeilnehmer = useCallback(() => {
     if (!t) return;
     setze({
       zahlungspflichtigerIstTeilnehmer: true,
       sepaKontoinhaber: `${t.vorname} ${t.nachname}`.trim(),
       sepaAnschrift: `${t.strasse}, ${t.plz} ${t.ort}`,
     });
-  }
+  }, [t, setze]);
+
+  // "Konto des Teilnehmers" ist vorausgewählt. Ohne diese Vorbelegung blieben
+  // die Felder trotzdem leer, und der Kunde müsste die bereits markierte
+  // Option erst anklicken, damit etwas passiert.
+  useEffect(() => {
+    if (teilnehmerZahlt && !daten.sepaKontoinhaber && t?.nachname) {
+      uebernehmeTeilnehmer();
+    }
+    // Nur beim Betreten des Schritts – spätere Änderungen sollen die
+    // Eingaben des Kunden nicht überschreiben.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-5">
