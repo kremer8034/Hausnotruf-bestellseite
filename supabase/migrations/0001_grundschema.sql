@@ -155,3 +155,20 @@ alter table profile       enable row level security;
 
 -- Bewusst keine Policies: Zugriff nur über den Service-Role-Schlüssel,
 -- der ausschließlich serverseitig verwendet wird.
+
+-- ---------------------------------------------------------------- Härtung
+-- Ohne diesen Entzug tauchen die Tabellen im GraphQL-Schema auf und sind für
+-- jeden mit dem öffentlichen Schlüssel auffindbar, auch wenn RLS jede Zeile
+-- blockiert. Die Anwendung greift ohnehin nur mit dem Service-Role-Schlüssel zu.
+revoke all on table public.konfiguration from anon, authenticated;
+revoke all on table public.entwuerfe     from anon, authenticated;
+revoke all on table public.vertraege     from anon, authenticated;
+revoke all on table public.ereignisse    from anon, authenticated;
+revoke all on table public.profile       from anon, authenticated;
+revoke all on sequence public.vorgangsnummer_seq from anon, authenticated;
+revoke all on sequence public.ereignisse_id_seq  from anon, authenticated;
+
+-- Suchpfad festnageln, sonst ließe er sich über die Rollenkonfiguration umbiegen.
+alter function public.setze_aktualisiert_am() set search_path = '';
+alter function public.naechste_vorgangsnummer() set search_path = 'public';
+revoke execute on function public.naechste_vorgangsnummer() from anon, authenticated;
