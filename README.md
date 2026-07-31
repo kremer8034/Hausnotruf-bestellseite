@@ -89,7 +89,8 @@ geprüft werden.
 
 ## Einrichtung
 
-Siehe [docs/betrieb.md](docs/betrieb.md).
+Bereitstellung auf Vercel: [docs/vercel-einrichten.md](docs/vercel-einrichten.md)
+Betrieb und Pflege: [docs/betrieb.md](docs/betrieb.md)
 
 ```bash
 npm install
