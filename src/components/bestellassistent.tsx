@@ -7,7 +7,13 @@ import { OptionId, PaketId, paketById } from "@/lib/katalog";
 import { berechnePreis, euro } from "@/lib/preis";
 import type { Stammdaten } from "@/lib/stammdaten";
 import { Bestellung, Pflegegrad, Schritt } from "@/lib/typen";
-import { bestellungSchema, fehlerZuordnung, ibanGueltig } from "@/lib/validierung";
+import {
+  bestellungSchema,
+  fehlerZuordnung,
+  geburtsdatumFehler,
+  ibanGueltig,
+  telefonFehler,
+} from "@/lib/validierung";
 
 import { Kontrollkaestchen, Fortschritt, Textfeld } from "./formular";
 import {
@@ -41,6 +47,56 @@ const ABLAUF: SchrittDefinition[] = [
   { id: "zahlung", titel: "Bankverbindung", pruefe: pruefeZahlung },
   { id: "zusammenfassung", titel: "Prüfen und unterschreiben", pruefe: () => ({}) },
 ];
+
+/**
+ * Ordnet einen Fehlerpfad dem Schritt zu, auf dem das Feld steht.
+ *
+ * Nötig für die Endprüfung: die schlägt auf der Zusammenfassung an, kann aber
+ * Felder betreffen, die weit vorher stehen. Ohne diese Zuordnung sähe der
+ * Kunde nur "Es fehlt etwas" und fände nirgends ein rot markiertes Feld.
+ */
+function schrittZuFehler(pfad: string): Schritt {
+  const wurzel = pfad.split(".")[0]!;
+  if (
+    wurzel === "besteller" ||
+    [
+      "bestellerIstTeilnehmer",
+      "pflegegrad",
+      "kostenuebernahme",
+      "pflegekasseName",
+      "pflegekasseAnschrift",
+      "versichertennummer",
+      "grundAlleinlebend",
+      "grundNotsituation",
+      "vdkMitglied",
+      "vdkMitgliedsnummer",
+    ].includes(wurzel)
+  ) {
+    return "kostentraeger";
+  }
+  if (wurzel === "paketId" || wurzel === "optionen") return "paket";
+  if (wurzel === "teilnehmer") return "teilnehmer";
+  if (["anschlussart", "telefonanbieter", "geraeteRufnummer"].includes(wurzel)) {
+    return "anschluss";
+  }
+  if (wurzel === "kontaktpersonen") return "kontaktpersonen";
+  if (
+    [
+      "keySafeStandortWunsch",
+      "zugangshinweise",
+      "hausarztName",
+      "hausarztTelefon",
+      "notfallhinweise",
+    ].includes(wurzel)
+  ) {
+    return "zugang";
+  }
+  if (wurzel.startsWith("sepa") || wurzel === "zahlungspflichtigerIstTeilnehmer") {
+    return "zahlung";
+  }
+  // bestaetigungen, unterschrift, unterschriftOrt
+  return "zusammenfassung";
+}
 
 const START: Entwurf = {
   bestellerIstTeilnehmer: undefined,
@@ -117,6 +173,8 @@ export function Bestellassistent({
   const [sendet, setSendet] = useState(false);
   const [sendefehler, setSendefehler] = useState<string | null>(null);
   const [erfolg, setErfolg] = useState<string | null>(null);
+  // Zählt jede fehlgeschlagene Prüfung; steuert den Sprung zum ersten Fehler.
+  const [fehlerLauf, setFehlerLauf] = useState(0);
   const sitzungId = useRef<string>("");
 
   const schritt = ABLAUF[index];
@@ -158,6 +216,28 @@ export function Bestellassistent({
     melde(schritt.id, "angesehen");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [schritt.id, melde]);
+
+  // Nach einer fehlgeschlagenen Prüfung zum ersten beanstandeten Feld
+  // springen. Die kurze Verzögerung lässt einen eventuellen Schrittwechsel
+  // zuerst zeichnen, damit das Feld auch wirklich im Dokument steht.
+  useEffect(() => {
+    if (fehlerLauf === 0) return;
+    const uhr = setTimeout(() => {
+      const ziel = document.querySelector<HTMLElement>(
+        '[aria-invalid="true"], .fehlertext',
+      );
+      if (!ziel) return;
+      ziel.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (
+        ziel instanceof HTMLInputElement ||
+        ziel instanceof HTMLSelectElement ||
+        ziel instanceof HTMLTextAreaElement
+      ) {
+        ziel.focus({ preventScroll: true });
+      }
+    }, 120);
+    return () => clearTimeout(uhr);
+  }, [fehlerLauf]);
 
   // Vorhandenen Entwurf laden.
   useEffect(() => {
@@ -213,8 +293,10 @@ export function Bestellassistent({
     const gefunden = schritt.pruefe(daten);
     if (Object.keys(gefunden).length > 0) {
       setFehler(gefunden);
+      setFehlerLauf((n) => n + 1);
       return;
     }
+    setSendefehler(null);
     melde(schritt.id, "abgeschlossen");
     const naechster = ABLAUF[Math.min(index + 1, ABLAUF.length - 1)];
     void speichereEntwurf(naechster.id, daten);
@@ -231,9 +313,25 @@ export function Bestellassistent({
     if (!geprueft.success) {
       const zuordnung = fehlerZuordnung(geprueft.error);
       setFehler(zuordnung);
-      setSendefehler(
-        "Einige Angaben fehlen noch. Bitte gehen Sie die markierten Felder durch.",
-      );
+      setFehlerLauf((n) => n + 1);
+
+      // Zum frühesten betroffenen Schritt zurückspringen, sonst stünde der
+      // Kunde vor einer Meldung ohne zugehöriges Feld.
+      const betroffen = Object.keys(zuordnung)
+        .map((pfad) => ABLAUF.findIndex((s) => s.id === schrittZuFehler(pfad)))
+        .filter((i) => i >= 0);
+      const frueheste = betroffen.length ? Math.min(...betroffen) : index;
+
+      if (frueheste < index) {
+        setIndex(frueheste);
+        setSendefehler(
+          `Im Schritt „${ABLAUF[frueheste].titel}“ fehlt noch etwas. Wir haben Sie dorthin zurückgebracht – das betroffene Feld ist rot markiert.`,
+        );
+      } else {
+        setSendefehler(
+          "Einige Angaben fehlen noch. Die betroffenen Felder sind rot markiert.",
+        );
+      }
       return;
     }
 
@@ -425,7 +523,7 @@ function SchrittZusammenfassung({
               </>
             }
             checked={b.agb && b.hinweisePunkt4und5}
-            fehler={fehler["bestaetigungen.agb"]}
+            fehler={fehler["bestaetigungen.agb"] ?? fehler["bestaetigungen.hinweisePunkt4und5"]}
             onChange={(e) => {
               setze({
                 bestaetigungen: {
@@ -629,8 +727,8 @@ function pruefeKostentraeger(daten: Entwurf): Fehler {
     const b = daten.besteller;
     if (!b?.vorname?.trim()) fehler["besteller.vorname"] = "Bitte ausfüllen.";
     if (!b?.nachname?.trim()) fehler["besteller.nachname"] = "Bitte ausfüllen.";
-    if (!b?.telefon?.trim() || b.telefon.trim().length < 6)
-      fehler["besteller.telefon"] = "Bitte eine erreichbare Telefonnummer angeben.";
+    const telefon = telefonFehler(b?.telefon);
+    if (telefon) fehler["besteller.telefon"] = telefon;
     if (!b?.email?.includes("@"))
       fehler["besteller.email"] = "Bitte eine gültige E-Mail-Adresse angeben.";
     if (!b?.bevollmaechtigt)
@@ -660,14 +758,14 @@ function pruefeTeilnehmer(daten: Entwurf): Fehler {
   const t = daten.teilnehmer;
   if (!t?.vorname?.trim()) fehler["teilnehmer.vorname"] = "Bitte ausfüllen.";
   if (!t?.nachname?.trim()) fehler["teilnehmer.nachname"] = "Bitte ausfüllen.";
-  if (!/^\d{2}\.\d{2}\.\d{4}$/.test(t?.geburtsdatum ?? ""))
-    fehler["teilnehmer.geburtsdatum"] = "Bitte als TT.MM.JJJJ angeben.";
+  const geburtsdatum = geburtsdatumFehler(t?.geburtsdatum);
+  if (geburtsdatum) fehler["teilnehmer.geburtsdatum"] = geburtsdatum;
   if (!t?.strasse?.trim()) fehler["teilnehmer.strasse"] = "Bitte ausfüllen.";
   if (!/^\d{5}$/.test(t?.plz ?? ""))
     fehler["teilnehmer.plz"] = "Die Postleitzahl hat fünf Ziffern.";
   if (!t?.ort?.trim()) fehler["teilnehmer.ort"] = "Bitte ausfüllen.";
-  if (!t?.telefon?.trim() || t.telefon.trim().length < 6)
-    fehler["teilnehmer.telefon"] = "Bitte eine Telefonnummer angeben.";
+  const telefon = telefonFehler(t?.telefon);
+  if (telefon) fehler["teilnehmer.telefon"] = telefon;
   if (daten.bestellerIstTeilnehmer && !t?.email?.includes("@"))
     fehler["teilnehmer.email"] = "Für die Vertragsunterlagen brauchen wir eine E-Mail-Adresse.";
   if (t?.email && t.email.length > 0 && !t.email.includes("@"))
@@ -688,8 +786,8 @@ function pruefeKontaktpersonen(daten: Entwurf): Fehler {
   }
   personen.forEach((p, i) => {
     if (!p.name.trim()) fehler[`kontaktpersonen.${i}.name`] = "Bitte ausfüllen.";
-    if (!p.telefon.trim() || p.telefon.trim().length < 6)
-      fehler[`kontaktpersonen.${i}.telefon`] = "Bitte eine Telefonnummer angeben.";
+    const telefon = telefonFehler(p.telefon);
+    if (telefon) fehler[`kontaktpersonen.${i}.telefon`] = telefon;
   });
   return fehler;
 }
@@ -698,7 +796,7 @@ function pruefeZahlung(daten: Entwurf): Fehler {
   const fehler: Fehler = {};
   if (!daten.sepaKontoinhaber?.trim())
     fehler["sepaKontoinhaber"] = "Bitte den Kontoinhaber angeben.";
-  if (!daten.sepaAnschrift?.trim())
+  if ((daten.sepaAnschrift ?? "").trim().length < 5)
     fehler["sepaAnschrift"] = "Bitte die Anschrift des Kontoinhabers angeben.";
   if (!ibanGueltig(daten.sepaIban ?? ""))
     fehler["sepaIban"] = "Diese IBAN ist nicht gültig. Bitte prüfen Sie die Eingabe.";

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { GESUNDHEIT_GEISTIG, GESUNDHEIT_KOERPERLICH } from "@/lib/pdf/felder";
 import { Bestellung, VorOrtErfassung } from "@/lib/typen";
 
-import { Kontrollkaestchen, Textbereich, Textfeld } from "./formular";
+import { Datumsfeld, Kontrollkaestchen, Textbereich, Textfeld } from "./formular";
 import { Unterschriftenfeld } from "./unterschrift";
 import { Hinweisbox, Karte, Knopf } from "./ui";
 
@@ -296,11 +296,10 @@ export function VorOrtFormular({
         </p>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Textfeld
+            <Datumsfeld
               etikett="Datum der Inbetriebnahme"
-              placeholder="TT.MM.JJJJ"
-              value={d.datumInbetriebnahme}
-              onChange={(e) => setD({ ...d, datumInbetriebnahme: e.target.value })}
+              wert={d.datumInbetriebnahme}
+              onAendern={(wert) => setD({ ...d, datumInbetriebnahme: wert })}
             />
             <Textfeld
               etikett="Ort"
@@ -309,12 +308,11 @@ export function VorOrtFormular({
             />
           </div>
           {bestellung.kostenuebernahme && (
-            <Textfeld
+            <Datumsfeld
               etikett="Versorgung genehmigt ab"
               hinweis="Falls die Pflegekasse bereits zugestimmt hat."
-              placeholder="TT.MM.JJJJ"
-              value={d.versorgungAb}
-              onChange={(e) => setD({ ...d, versorgungAb: e.target.value })}
+              wert={d.versorgungAb}
+              onAendern={(wert) => setD({ ...d, versorgungAb: wert })}
             />
           )}
           <fieldset>

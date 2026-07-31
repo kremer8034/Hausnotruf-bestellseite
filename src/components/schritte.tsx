@@ -14,6 +14,7 @@ import { BEZUGSARTEN, Bestellung, Kontaktperson, Pflegegrad } from "@/lib/typen"
 
 import {
   Auswahlfeld,
+  Datumsfeld,
   Kontrollkaestchen,
   Textbereich,
   Textfeld,
@@ -95,8 +96,11 @@ export function SchrittKostentraeger({ daten, setze, fehler }: SchrittProps) {
 
       {daten.bestellerIstTeilnehmer === false && (
         <div className="rounded-lg border border-tinte-200 bg-tinte-50 p-4">
-          <p className="mb-4 text-sm font-medium text-tinte-700">Ihre Kontaktdaten</p>
-          <div className="space-y-4">
+          <p className="text-sm font-medium text-tinte-700">Ihre Kontaktdaten</p>
+          {fehler["besteller"] && (
+            <p className="fehlertext">{fehler["besteller"]}</p>
+          )}
+          <div className="mt-4 space-y-4">
             <Gitter spalten={3}>
               <Auswahlfeld
                 etikett="Anrede"
@@ -506,15 +510,17 @@ export function SchrittTeilnehmer({ daten, setze, fehler }: SchrittProps) {
         />
       </Gitter>
 
-      <Textfeld
-        etikett="Geburtsdatum"
-        pflicht
-        placeholder="TT.MM.JJJJ"
-        inputMode="numeric"
-        value={t?.geburtsdatum ?? ""}
-        fehler={fehler["teilnehmer.geburtsdatum"]}
-        onChange={(e) => aendere("geburtsdatum", e.target.value)}
-      />
+      <div className="sm:max-w-xs">
+        <Datumsfeld
+          etikett="Geburtsdatum"
+          pflicht
+          ab="1900-01-01"
+          hoechstensHeute
+          wert={t?.geburtsdatum ?? ""}
+          fehler={fehler["teilnehmer.geburtsdatum"]}
+          onAendern={(wert) => aendere("geburtsdatum", wert)}
+        />
+      </div>
 
       <Textfeld
         etikett="Straße und Hausnummer"

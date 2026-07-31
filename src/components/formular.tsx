@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useId } from "react";
+import { ReactNode, useEffect, useId, useState } from "react";
 
 interface Basis {
   etikett: string;
@@ -69,6 +69,78 @@ export function Textbereich({
         {...rest}
         aria-invalid={Boolean(fehler)}
         className={`feld resize-y ${fehler ? "feld-fehler" : ""}`}
+      />
+    </Rahmen>
+  );
+}
+
+/** Wandelt TT.MM.JJJJ in das ISO-Format um, das ein Datumsfeld erwartet. */
+export function zuIsoDatum(deutsch: string): string {
+  const treffer = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec((deutsch ?? "").trim());
+  return treffer ? `${treffer[3]}-${treffer[2]}-${treffer[1]}` : "";
+}
+
+/** Wandelt das ISO-Format des Datumsfelds zurück nach TT.MM.JJJJ. */
+export function vonIsoDatum(iso: string): string {
+  const treffer = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  return treffer ? `${treffer[3]}.${treffer[2]}.${treffer[1]}` : "";
+}
+
+function heuteIso(): string {
+  const d = new Date();
+  const zweistellig = (n: number) => String(n).padStart(2, "0");
+  // Bewusst lokal statt über toISOString: sonst springt der Wert kurz vor
+  // Mitternacht auf den Vortag.
+  return `${d.getFullYear()}-${zweistellig(d.getMonth() + 1)}-${zweistellig(d.getDate())}`;
+}
+
+/**
+ * Datumsfeld mit Kalenderauswahl.
+ *
+ * Nutzt das native Datumsfeld des Browsers: auf dem Handy erscheint die
+ * gewohnte Auswahl, am Rechner ein Kalender neben dem Feld. Tippen bleibt
+ * möglich. Nach außen wird weiterhin TT.MM.JJJJ gereicht, weil der Vertrag
+ * dieses Format erwartet.
+ */
+export function Datumsfeld({
+  etikett,
+  hinweis,
+  fehler,
+  pflicht,
+  wert,
+  onAendern,
+  ab,
+  hoechstensHeute = false,
+  ...rest
+}: Basis & {
+  wert: string;
+  onAendern: (wert: string) => void;
+  /** Frühestes wählbares Datum im ISO-Format. */
+  ab?: string;
+  /** Begrenzt die Auswahl auf heute – etwa für ein Geburtsdatum. */
+  hoechstensHeute?: boolean;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "type">) {
+  const id = useId();
+  const [bis, setBis] = useState<string | undefined>(undefined);
+
+  // Erst nach dem Einhängen setzen, sonst weichen Server- und Browserfassung
+  // voneinander ab, sobald sich das Datum ändert.
+  useEffect(() => {
+    if (hoechstensHeute) setBis(heuteIso());
+  }, [hoechstensHeute]);
+
+  return (
+    <Rahmen etikett={etikett} hinweis={hinweis} fehler={fehler} pflicht={pflicht} id={id}>
+      <input
+        id={id}
+        type="date"
+        {...rest}
+        min={ab}
+        max={bis}
+        value={zuIsoDatum(wert)}
+        onChange={(e) => onAendern(vonIsoDatum(e.target.value))}
+        aria-invalid={Boolean(fehler)}
+        className={`feld ${fehler ? "feld-fehler" : ""}`}
       />
     </Rahmen>
   );

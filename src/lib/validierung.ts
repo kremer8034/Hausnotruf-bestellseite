@@ -3,6 +3,8 @@ import { z } from "zod";
 import { PAKETE, ZUSATZOPTIONEN } from "./katalog";
 import { BEZUGSARTEN } from "./typen";
 
+export const TELEFON_MUSTER = /^[\d\s+()/-]+$/;
+
 const pflichttext = (feld: string, min = 2) =>
   z.string().trim().min(min, `${feld} bitte ausfüllen.`);
 
@@ -52,7 +54,7 @@ export const personSchema = z.object({
     .string()
     .trim()
     .min(6, "Bitte eine erreichbare Telefonnummer angeben.")
-    .regex(/^[\d\s+()/-]+$/, "Die Telefonnummer enthält ungültige Zeichen."),
+    .regex(TELEFON_MUSTER, "Die Telefonnummer enthält ungültige Zeichen."),
   email: z.string().trim().email("Bitte eine gültige E-Mail-Adresse angeben.").or(z.literal("")),
 });
 
@@ -215,4 +217,23 @@ export function fehlerZuordnung(fehler: z.ZodError): Record<string, string> {
     if (!zuordnung[pfad]) zuordnung[pfad] = problem.message;
   }
   return zuordnung;
+}
+
+
+/**
+ * Prüfungen, die sowohl die Schritte im Assistenten als auch die Endprüfung
+ * verwenden. Ohne diese gemeinsame Grundlage liefe der Kunde bis zur letzten
+ * Seite und würde dort zurückgeworfen, weil die Endprüfung strenger ist.
+ */
+export function telefonFehler(wert: string | undefined, pflicht = true): string | null {
+  const text = (wert ?? "").trim();
+  if (!text) return pflicht ? "Bitte eine erreichbare Telefonnummer angeben." : null;
+  if (text.length < 6) return "Bitte eine erreichbare Telefonnummer angeben.";
+  if (!TELEFON_MUSTER.test(text)) return "Die Telefonnummer enthält ungültige Zeichen.";
+  return null;
+}
+
+export function geburtsdatumFehler(wert: string | undefined): string | null {
+  const ergebnis = geburtsdatumSchema.safeParse((wert ?? "").trim());
+  return ergebnis.success ? null : (ergebnis.error.errors[0]?.message ?? "Bitte prüfen.");
 }
