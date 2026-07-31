@@ -104,7 +104,28 @@ Abschluss mitgespeichert.
 5. Ändern sich AGB oder Widerrufsbelehrung, müssen `src/lib/rechtstexte.ts` und
    `src/app/widerruf/page.tsx` nachgezogen werden.
 
-## 8. Wiederkehrende Aufgaben
+## 8. Verträge nachbearbeiten
+
+Backoffice und Admin können einen abgeschlossenen Vertrag über
+**Vertrag → Bearbeiten** ergänzen oder berichtigen, etwa um die Vertragsnummer
+nachzutragen oder eine falsch geschriebene Anschrift zu korrigieren.
+
+Beim Speichern wird das Vertrags-PDF neu erzeugt. Dabei gilt:
+
+- Die vom Kunden **unterschriebene Erstfassung bleibt unverändert erhalten** und
+  ist über „Unterschriebene Erstfassung ansehen" jederzeit abrufbar. Ohne sie
+  ließe sich später nicht mehr belegen, worauf sich die Unterschrift bezog.
+- Jede Änderung wird mit Zeitpunkt, Bearbeiter und geänderten Feldern
+  protokolliert und auf der Vertragsseite angezeigt.
+- Auf Wunsch erhält der Kunde die neue Fassung per E-Mail, mit Angabe der
+  geänderten Felder.
+
+**Nicht bearbeitbar sind Paket, Zusatzleistungen und Beitrag.** Der Kunde hat
+einen bestimmten Leistungsumfang zu einem bestimmten Preis unterschrieben; eine
+Änderung daran wäre ein neuer Vertrag und keine Korrektur. Für solche Fälle ist
+der bestehende Vertrag zu kündigen und ein neuer abzuschließen.
+
+## 9. Wiederkehrende Aufgaben
 
 | Aufgabe | Wie oft | Wer |
 |---|---|---|

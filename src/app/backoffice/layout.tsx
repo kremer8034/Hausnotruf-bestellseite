@@ -16,6 +16,9 @@ export default async function BackofficeLayout({
 
   const navigation = [
     { pfad: "/backoffice", text: "Verträge" },
+    // Backoffice und Technik greifen auf dieselben Vorgänge zu; der Wechsel
+    // soll ohne Umweg über die Adresszeile möglich sein.
+    { pfad: "/techniker", text: "Installationen" },
     { pfad: "/backoffice/trichter", text: "Trichter" },
     ...(istAdmin ? [{ pfad: "/backoffice/einstellungen", text: "Einstellungen" }] : []),
   ];

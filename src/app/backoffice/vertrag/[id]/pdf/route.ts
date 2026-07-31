@@ -12,15 +12,23 @@ export async function GET(
 ) {
   await verlangeRolle(["admin", "mitarbeiter", "techniker"]);
   const { id } = await params;
-  const gesamt = anfrage.nextUrl.searchParams.get("gesamt") === "1";
+  const parameter = anfrage.nextUrl.searchParams;
+  const gesamt = parameter.get("gesamt") === "1";
+  // Die Fassung, die der Kunde unterschrieben hat – unverändert, auch wenn
+  // der Vertrag später im Backoffice nachbearbeitet wurde.
+  const original = parameter.get("original") === "1";
 
   const { data: vertrag } = await db()
     .from("vertraege")
-    .select("vorgangsnummer, pdf_pfad, gesamt_pdf_pfad")
+    .select("vorgangsnummer, pdf_pfad, gesamt_pdf_pfad, pdf_original_pfad")
     .eq("id", id)
     .maybeSingle();
 
-  const pfad = gesamt ? vertrag?.gesamt_pdf_pfad : vertrag?.pdf_pfad;
+  const pfad = original
+    ? vertrag?.pdf_original_pfad
+    : gesamt
+      ? (vertrag?.gesamt_pdf_pfad ?? vertrag?.pdf_pfad)
+      : vertrag?.pdf_pfad;
   if (!vertrag || !pfad) {
     return NextResponse.json({ fehler: "Nicht gefunden" }, { status: 404 });
   }
@@ -30,7 +38,12 @@ export async function GET(
     return NextResponse.json({ fehler: "Ablage nicht erreichbar" }, { status: 502 });
   }
 
-  const name = `${vertrag.vorgangsnummer}${gesamt ? "_Gesamtvertrag" : "_Servicevertrag"}.pdf`;
+  const zusatz = original
+    ? "_Servicevertrag_unterschriebene_Erstfassung"
+    : gesamt
+      ? "_Gesamtvertrag"
+      : "_Servicevertrag";
+  const name = `${vertrag.vorgangsnummer}${zusatz}.pdf`;
   return new NextResponse(await data.arrayBuffer(), {
     headers: {
       "Content-Type": "application/pdf",

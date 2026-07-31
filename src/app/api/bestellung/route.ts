@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { BUCKET, db, ladeStammdaten, naechsteVorgangsnummer } from "@/lib/db";
+import { db, ladeStammdaten, naechsteVorgangsnummer } from "@/lib/db";
 import { mailVorlage, sendeMail } from "@/lib/mail";
 import { paketById } from "@/lib/katalog";
-import { kundenFelder, kundenUnterschriftsfelder } from "@/lib/pdf/felder";
-import { fuelleVertrag } from "@/lib/pdf/fuellen";
 import { berechnePreis, euro } from "@/lib/preis";
+import { anredeFuer, empfaengerAdresse, erzeugeVertragsPdf, legeAb } from "@/lib/vertrag";
 import { bestellungSchema, fehlerZuordnung } from "@/lib/validierung";
 import type { Bestellung } from "@/lib/typen";
 
@@ -38,26 +37,19 @@ export async function POST(anfrage: NextRequest) {
       vdkMitglied: bestellung.vdkMitglied,
     });
 
-    const { pdf, warnungen } = await fuelleVertrag({
-      werte: kundenFelder(bestellung, stammdaten, vorgangsnummer),
-      unterschriften: kundenUnterschriftsfelder(bestellung).map((feld) => ({
-        feld,
-        bild: bestellung.unterschrift,
-      })),
+    const jetzt = new Date().toISOString();
+    const { pdf, dateiname, pfad, warnungen } = await erzeugeVertragsPdf({
+      vorgangsnummer,
+      vertragsnummer: null,
+      daten: bestellung,
+      vor_ort: null,
+      unterschrift: bestellung.unterschrift,
+      erstellt_am: jetzt,
     });
     if (warnungen.length) {
       console.warn(`Vertrag ${vorgangsnummer}: ${warnungen.join("; ")}`);
     }
-
-    const dateiname = `${vorgangsnummer}_Servicevertrag_Hausnotruf.pdf`;
-    const pfad = `${new Date().getFullYear()}/${vorgangsnummer}/${dateiname}`;
-    const { error: uploadFehler } = await db()
-      .storage.from(BUCKET)
-      .upload(pfad, Buffer.from(pdf), {
-        contentType: "application/pdf",
-        upsert: true,
-      });
-    if (uploadFehler) throw new Error(`Ablage: ${uploadFehler.message}`);
+    await legeAb(pfad, pdf);
 
     const { data: vertrag, error: dbFehler } = await db()
       .from("vertraege")
@@ -70,6 +62,9 @@ export async function POST(anfrage: NextRequest) {
         unterschrift: bestellung.unterschrift,
         unterschrift_ip: klientAdresse(anfrage),
         pdf_pfad: pfad,
+        // Die unterschriebene Erstfassung; sie bleibt auch dann erhalten,
+        // wenn das Backoffice den Vertrag später nachbearbeitet.
+        pdf_original_pfad: pfad,
       })
       .select("id")
       .single();
@@ -113,10 +108,8 @@ async function versendeMails(
   dateiname: string,
 ): Promise<void> {
   const paket = paketById(bestellung.paketId);
-  const empfaenger = bestellung.besteller?.email || bestellung.teilnehmer.email;
-  const anrede = bestellung.besteller
-    ? `${bestellung.besteller.anrede === "Frau" ? "Sehr geehrte Frau" : bestellung.besteller.anrede === "Herr" ? "Sehr geehrter Herr" : "Guten Tag"} ${bestellung.besteller.nachname}`
-    : `${bestellung.teilnehmer.anrede === "Frau" ? "Sehr geehrte Frau" : bestellung.teilnehmer.anrede === "Herr" ? "Sehr geehrter Herr" : "Guten Tag"} ${bestellung.teilnehmer.nachname}`;
+  const empfaenger = empfaengerAdresse(bestellung);
+  const anrede = anredeFuer(bestellung);
 
   const teilnehmerName = `${bestellung.teilnehmer.vorname} ${bestellung.teilnehmer.nachname}`;
   const anhaenge = [{ dateiname, inhalt: pdf }];

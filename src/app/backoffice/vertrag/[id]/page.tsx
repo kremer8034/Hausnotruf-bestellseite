@@ -33,6 +33,11 @@ export default async function Vertragsdetail({
     kostenErstesJahr: number;
   };
   const paket = sicheresPaket(b.paketId);
+  const protokoll = (data.aenderungsprotokoll ?? []) as {
+    zeit: string;
+    benutzer: string;
+    felder: string[];
+  }[];
 
   return (
     <>
@@ -45,21 +50,32 @@ export default async function Vertragsdetail({
             ← Zurück zur Übersicht
           </Link>
           <h1 className="mt-1 text-2xl font-bold text-tinte-900">
-            {data.vorgangsnummer}
+            {data.vertragsnummer ?? data.vorgangsnummer}
           </h1>
           <p className="mt-1 text-sm text-tinte-500">
-            Abgeschlossen am{" "}
-            {new Date(data.erstellt_am).toLocaleString("de-DE")}
+            {data.vertragsnummer && `Vorgang ${data.vorgangsnummer} · `}
+            Abgeschlossen am {new Date(data.erstellt_am).toLocaleString("de-DE")}
             {data.unterschrift_ip && ` · unterschrieben von ${data.unterschrift_ip}`}
           </p>
+          {!data.vertragsnummer && (
+            <p className="mt-1 text-sm text-brk-700">
+              Es ist noch keine Vertragsnummer vergeben.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <a
-            href={`/backoffice/vertrag/${id}/pdf`}
+            href={`/backoffice/vertrag/${id}/pdf${vorOrt ? "?gesamt=1" : ""}`}
             className="rounded-lg bg-brk-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brk-700"
           >
-            Vertrag als PDF
+            {vorOrt ? "Gesamtvertrag als PDF" : "Vertrag als PDF"}
           </a>
+          <Link
+            href={`/backoffice/vertrag/${id}/bearbeiten`}
+            className="rounded-lg border border-tinte-300 bg-white px-4 py-2 text-sm font-medium text-tinte-700 transition hover:bg-tinte-100"
+          >
+            Bearbeiten
+          </Link>
           <StatusWechsler id={id} status={data.status as VertragsStatus} />
         </div>
       </div>
@@ -192,14 +208,10 @@ export default async function Vertragsdetail({
                     ["Medikamente", vorOrt.gesundheit.medikamente || "—"],
                   ]}
                 />
-                {data.gesamt_pdf_pfad && (
-                  <a
-                    href={`/backoffice/vertrag/${id}/pdf?gesamt=1`}
-                    className="mt-4 inline-block text-sm font-medium text-brk-700 hover:underline"
-                  >
-                    Gesamtvertrag inklusive Vor-Ort-Teil herunterladen
-                  </a>
-                )}
+                <p className="mt-4 text-xs text-tinte-500">
+                  Der Gesamtvertrag oben enthält diese Angaben. Der Kunde hat ihn
+                  nach der Installation automatisch per E-Mail erhalten.
+                </p>
               </>
             ) : (
               <p className="text-sm text-tinte-600">
@@ -258,7 +270,40 @@ export default async function Vertragsdetail({
               {new Date(data.unterschrift_zeit).toLocaleString("de-DE")}
               {data.unterschrift_ip && ` · ${data.unterschrift_ip}`}
             </p>
+            {data.pdf_original_pfad && (
+              <a
+                href={`/backoffice/vertrag/${id}/pdf?original=1`}
+                className="mt-3 inline-block text-sm font-medium text-brk-700 hover:underline"
+              >
+                Unterschriebene Erstfassung ansehen
+              </a>
+            )}
           </Karte>
+
+          {protokoll.length > 0 && (
+            <Karte>
+              <h2 className="mb-3 text-base font-bold text-tinte-900">
+                Nachbearbeitungen
+              </h2>
+              <ul className="space-y-3 text-sm">
+                {protokoll.map((eintrag, i) => (
+                  <li key={i} className="border-l-2 border-tinte-200 pl-3">
+                    <p className="text-tinte-800">{eintrag.felder.join(", ")}</p>
+                    <p className="mt-0.5 text-xs text-tinte-500">
+                      {new Date(eintrag.zeit).toLocaleString("de-DE")} · {eintrag.benutzer}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </Karte>
+          )}
+
+          {data.notiz && (
+            <Karte>
+              <h2 className="mb-2 text-base font-bold text-tinte-900">Interne Notiz</h2>
+              <p className="text-sm whitespace-pre-wrap text-tinte-700">{data.notiz}</p>
+            </Karte>
+          )}
         </div>
       </div>
     </>

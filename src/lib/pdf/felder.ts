@@ -98,18 +98,25 @@ export function ibanFormatiert(iban: string): string {
   return iban.replace(/\s+/g, "").toUpperCase().replace(/(.{4})/g, "$1 ").trim();
 }
 
-/**
- * Baut die Feldwerte für den Kundenteil des Vertrags.
- *
- * @param datum Abschlussdatum, Standard ist heute.
- * @param mandatsreferenz Referenz des SEPA-Mandats (interne Vorgangsnummer).
- */
+export interface KundenFelderOptionen {
+  /** Referenz des SEPA-Mandats. Wir verwenden dafür die interne Vorgangsnummer. */
+  mandatsreferenz: string;
+  /** Abschlussdatum. Standard ist heute. */
+  datum?: string;
+  /**
+   * Vom Kreisverband vergebene Vertragsnummer. Sie liegt beim Abschluss noch
+   * nicht vor und wird im Backoffice nachgetragen.
+   */
+  vertragsnummer?: string;
+}
+
+/** Baut die Feldwerte für den Kundenteil des Vertrags. */
 export function kundenFelder(
   b: Bestellung,
   s: Stammdaten,
-  mandatsreferenz: string,
-  datum: string = heute(),
+  optionen: KundenFelderOptionen,
 ): Feldwerte {
+  const { mandatsreferenz, datum = heute(), vertragsnummer = "" } = optionen;
   const paket = paketById(b.paketId);
   const preis = berechnePreis({
     paketId: b.paketId,
@@ -132,7 +139,8 @@ export function kundenFelder(
   const f: Feldwerte = {};
 
   // ---- Seite 1: Vertragsrahmen -------------------------------------------
-  f["Vertragsnummer"] = ""; // wird vom Kreisverband manuell vergeben
+  // Bleibt leer, solange das Backoffice keine Nummer nachgetragen hat.
+  f["Vertragsnummer"] = vertragsnummer;
   f["Ort_Datum"] = ortDatum;
   f["KV_Name"] = s.verbandsName;
   f["KV_Anschrift"] = s.verbandsAnschrift;

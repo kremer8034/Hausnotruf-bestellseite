@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 interface Zeile {
   id: string;
   vorgangsnummer: string;
+  vertragsnummer: string | null;
   status: VertragsStatus;
   paket: string;
   kostenuebernahme: boolean;
@@ -36,7 +37,7 @@ export default async function Vertragsliste({
   let abfrage = db()
     .from("vertraege")
     .select(
-      "id, vorgangsnummer, status, paket, kostenuebernahme, erstellt_am, vor_ort_am, preis, daten",
+      "id, vorgangsnummer, vertragsnummer, status, paket, kostenuebernahme, erstellt_am, vor_ort_am, preis, daten",
     )
     .order("erstellt_am", { ascending: false })
     .limit(200);
@@ -47,7 +48,7 @@ export default async function Vertragsliste({
   if (suche) {
     // Suche über Vorgangsnummer und den Namen im JSON-Feld.
     abfrage = abfrage.or(
-      `vorgangsnummer.ilike.%${suche}%,daten->teilnehmer->>nachname.ilike.%${suche}%`,
+      `vorgangsnummer.ilike.%${suche}%,vertragsnummer.ilike.%${suche}%,daten->teilnehmer->>nachname.ilike.%${suche}%`,
     );
   }
 
@@ -84,7 +85,7 @@ export default async function Vertragsliste({
         <input
           name="suche"
           defaultValue={suche}
-          placeholder="Vorgangsnummer oder Nachname"
+          placeholder="Nummer oder Nachname"
           className="feld max-w-xs"
         />
         <select name="status" defaultValue={status} className="feld max-w-[13rem]">
@@ -143,8 +144,13 @@ export default async function Vertragsliste({
                       href={`/backoffice/vertrag/${v.id}`}
                       className="font-medium text-brk-700 hover:underline"
                     >
-                      {v.vorgangsnummer}
+                      {v.vertragsnummer ?? v.vorgangsnummer}
                     </Link>
+                    {v.vertragsnummer && (
+                      <span className="block text-xs text-tinte-500">
+                        {v.vorgangsnummer}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className="block text-tinte-900">

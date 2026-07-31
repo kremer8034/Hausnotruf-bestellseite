@@ -138,7 +138,11 @@ async function main() {
   const bild = `data:image/png;base64,${png.toString("base64")}`;
 
   const werte = {
-    ...kundenFelder(BEISPIEL, STAMMDATEN_STANDARD, "HNR-2026-0001", "31.07.2026"),
+    ...kundenFelder(BEISPIEL, STAMMDATEN_STANDARD, {
+      mandatsreferenz: "HNR-2026-0001",
+      datum: "31.07.2026",
+      vertragsnummer: "2026/0417",
+    }),
     ...vorOrtFelder(VOR_ORT, BEISPIEL, STAMMDATEN_STANDARD),
   };
 

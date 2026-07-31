@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { verlangeRolle } from "@/lib/auth";
-import { BUCKET, db, ladeStammdaten } from "@/lib/db";
+import { db, ladeStammdaten } from "@/lib/db";
 import { mailVorlage, sendeMail } from "@/lib/mail";
-import {
-  kundenFelder,
-  kundenUnterschriftsfelder,
-  vorOrtFelder,
-  VOR_ORT_UNTERSCHRIFTEN,
-} from "@/lib/pdf/felder";
-import { fuelleVertrag } from "@/lib/pdf/fuellen";
 import { Bestellung, VorOrtErfassung } from "@/lib/typen";
+import {
+  anredeFuer,
+  empfaengerAdresse,
+  erzeugeVertragsPdf,
+  legeAb,
+  paketName,
+} from "@/lib/vertrag";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -55,7 +55,7 @@ const schema = z.object({
 /**
  * Nimmt die Erfassung des Technikers entgegen und erzeugt daraus den
  * Gesamtvertrag: Kundenteil und Vor-Ort-Teil in einem Dokument, mit allen
- * vier Unterschriften.
+ * vier Unterschriften. Kunde und Backoffice erhalten ihn per E-Mail.
  */
 export async function POST(
   anfrage: NextRequest,
@@ -75,7 +75,7 @@ export async function POST(
 
   const { data: vertrag } = await db()
     .from("vertraege")
-    .select("vorgangsnummer, daten, unterschrift, erstellt_am")
+    .select("vorgangsnummer, vertragsnummer, daten, unterschrift, erstellt_am")
     .eq("id", id)
     .maybeSingle();
   if (!vertrag) {
@@ -85,38 +85,19 @@ export async function POST(
   try {
     const bestellung = vertrag.daten as Bestellung;
     const stammdaten = await ladeStammdaten();
-    const abschluss = new Date(vertrag.erstellt_am).toLocaleDateString("de-DE");
 
-    const { pdf, warnungen } = await fuelleVertrag({
-      werte: {
-        ...kundenFelder(bestellung, stammdaten, vertrag.vorgangsnummer, abschluss),
-        ...vorOrtFelder(vorOrt, bestellung, stammdaten),
-      },
-      unterschriften: [
-        ...kundenUnterschriftsfelder(bestellung).map((feld) => ({
-          feld,
-          bild: vertrag.unterschrift as string,
-        })),
-        {
-          feld: VOR_ORT_UNTERSCHRIFTEN.leistungserbringer,
-          bild: vorOrt.unterschriftLeistungserbringer,
-        },
-        {
-          feld: VOR_ORT_UNTERSCHRIFTEN.teilnehmer,
-          bild: vorOrt.unterschriftTeilnehmer,
-        },
-      ],
+    const { pdf, dateiname, pfad, warnungen } = await erzeugeVertragsPdf({
+      vorgangsnummer: vertrag.vorgangsnummer,
+      vertragsnummer: vertrag.vertragsnummer,
+      daten: bestellung,
+      vor_ort: vorOrt,
+      unterschrift: vertrag.unterschrift as string,
+      erstellt_am: vertrag.erstellt_am as string,
     });
     if (warnungen.length) {
       console.warn(`Gesamtvertrag ${vertrag.vorgangsnummer}: ${warnungen.join("; ")}`);
     }
-
-    const dateiname = `${vertrag.vorgangsnummer}_Gesamtvertrag_Hausnotruf.pdf`;
-    const pfad = `${new Date(vertrag.erstellt_am).getFullYear()}/${vertrag.vorgangsnummer}/${dateiname}`;
-    const { error: uploadFehler } = await db()
-      .storage.from(BUCKET)
-      .upload(pfad, Buffer.from(pdf), { contentType: "application/pdf", upsert: true });
-    if (uploadFehler) throw new Error(`Ablage: ${uploadFehler.message}`);
+    await legeAb(pfad, pdf);
 
     const { error: dbFehler } = await db()
       .from("vertraege")
@@ -130,29 +111,66 @@ export async function POST(
       .eq("id", id);
     if (dbFehler) throw new Error(`Speichern: ${dbFehler.message}`);
 
-    // Backoffice informieren; ein Fehlschlag darf die Erfassung nicht verwerfen.
-    try {
-      await sendeMail({
-        an: stammdaten.backofficeEmail,
-        betreff: `Installation abgeschlossen – ${vertrag.vorgangsnummer}`,
-        text: `Die Installation für ${bestellung.teilnehmer.vorname} ${bestellung.teilnehmer.nachname} ist am ${vorOrt.datumInbetriebnahme} abgeschlossen worden. Der Gesamtvertrag liegt im Anhang.`,
-        html: mailVorlage(
-          "Installation abgeschlossen",
-          [
-            `Die Installation für <strong>${bestellung.teilnehmer.vorname} ${bestellung.teilnehmer.nachname}</strong> ist am ${vorOrt.datumInbetriebnahme} abgeschlossen worden.`,
-            `Erfasst durch ${benutzer.name}. Der Gesamtvertrag mit allen Unterschriften liegt im Anhang und im Backoffice.`,
-          ],
-          vertrag.vorgangsnummer,
-        ),
-        anhaenge: [{ dateiname, inhalt: pdf }],
+    const teilnehmerName = `${bestellung.teilnehmer.vorname} ${bestellung.teilnehmer.nachname}`;
+    const anhaenge = [{ dateiname, inhalt: pdf }];
+    const fuss = `${stammdaten.verbandsName} · ${stammdaten.verbandsAnschrift} · ${stammdaten.telefon} · ${stammdaten.email}`;
+
+    // Kunde: der Vertrag ist jetzt vollständig, mit Geräteliste und
+    // Inbetriebnahme. Ein Fehlschlag darf die Erfassung nicht verwerfen.
+    const empfaenger = empfaengerAdresse(bestellung);
+    if (empfaenger) {
+      const geraete = vorOrt.mietgeraete
+        .filter((g) => g.bezeichnung)
+        .map((g) => g.bezeichnung)
+        .join(", ");
+      const absaetze = [
+        `${anredeFuer(bestellung)},`,
+        `Ihr Hausnotruf ist seit dem ${vorOrt.datumInbetriebnahme} in Betrieb. Im Anhang finden Sie den vollständigen Vertrag – jetzt ergänzt um die eingebauten Geräte, die technischen Angaben und die Inbetriebnahme.`,
+        geraete
+          ? `<strong>Eingebaute Geräte:</strong> ${geraete}`
+          : "",
+        `Bitte bewahren Sie dieses Dokument auf. Es ersetzt die Fassung, die Sie beim Vertragsabschluss erhalten haben.`,
+        `Im Notfall genügt ein Druck auf den Funksender. Unsere Notrufzentrale meldet sich und schickt Hilfe. Bei Fragen zur Bedienung erreichen Sie uns unter ${stammdaten.telefon}.`,
+      ].filter(Boolean);
+
+      await sendeMailSicher({
+        an: empfaenger,
+        betreff: `Ihr Hausnotruf ist in Betrieb – Vertrag ${vertrag.vorgangsnummer}`,
+        text: absaetze.join("\n\n").replace(/<[^>]+>/g, ""),
+        html: mailVorlage("Ihr Hausnotruf ist in Betrieb", absaetze, fuss),
+        anhaenge,
       });
-    } catch (fehler) {
-      console.error("Mail zur Installation fehlgeschlagen:", fehler);
     }
+
+    await sendeMailSicher({
+      an: stammdaten.backofficeEmail,
+      betreff: `Installation abgeschlossen – ${vertrag.vorgangsnummer} – ${teilnehmerName}`,
+      text: `Die Installation für ${teilnehmerName} ist am ${vorOrt.datumInbetriebnahme} abgeschlossen worden. Erfasst durch ${benutzer.name}. Der Gesamtvertrag liegt im Anhang.`,
+      html: mailVorlage(
+        "Installation abgeschlossen",
+        [
+          `Die Installation für <strong>${teilnehmerName}</strong> (${paketName(bestellung.paketId)}) ist am ${vorOrt.datumInbetriebnahme} abgeschlossen worden.`,
+          `Erfasst durch ${benutzer.name}. Der Gesamtvertrag mit allen Unterschriften liegt im Anhang und im Backoffice.`,
+          empfaenger
+            ? `Der Kunde hat das Dokument ebenfalls erhalten (${empfaenger}).`
+            : `<strong>Achtung:</strong> Für diesen Vertrag ist keine E-Mail-Adresse hinterlegt – der Kunde hat das Dokument nicht erhalten.`,
+        ],
+        vertrag.vorgangsnummer,
+      ),
+      anhaenge,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (fehler) {
     console.error("Vor-Ort-Erfassung fehlgeschlagen:", fehler);
     return NextResponse.json({ fehler: (fehler as Error).message }, { status: 500 });
+  }
+}
+
+async function sendeMailSicher(auftrag: Parameters<typeof sendeMail>[0]) {
+  try {
+    await sendeMail(auftrag);
+  } catch (fehler) {
+    console.error(`Mailversand an ${auftrag.an} fehlgeschlagen:`, fehler);
   }
 }

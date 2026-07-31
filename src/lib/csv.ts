@@ -13,6 +13,7 @@ import { Bestellung, STATUS_LABEL, VertragsStatus, VorOrtErfassung } from "./typ
 
 export interface VertragsZeile {
   vorgangsnummer: string;
+  vertragsnummer: string | null;
   status: VertragsStatus;
   erstellt_am: string;
   unterschrift_zeit: string | null;
@@ -34,6 +35,7 @@ const datum = (wert: string | null) =>
 const jaNein = (wert: boolean | undefined) => (wert ? "ja" : "nein");
 
 const SPALTEN: Spalte[] = [
+  ["Vertragsnummer", (z) => z.vertragsnummer ?? ""],
   ["Vorgangsnummer", (z) => z.vorgangsnummer],
   ["Status", (z) => STATUS_LABEL[z.status]],
   ["Vertragsabschluss", (z) => datum(z.erstellt_am)],

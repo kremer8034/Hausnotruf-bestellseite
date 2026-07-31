@@ -14,7 +14,7 @@ export async function GET(anfrage: NextRequest) {
   let abfrage = db()
     .from("vertraege")
     .select(
-      "vorgangsnummer, status, erstellt_am, unterschrift_zeit, unterschrift_ip, vor_ort_am, daten, vor_ort, preis",
+      "vorgangsnummer, vertragsnummer, status, erstellt_am, unterschrift_zeit, unterschrift_ip, vor_ort_am, daten, vor_ort, preis",
     )
     .order("erstellt_am", { ascending: false });
 
