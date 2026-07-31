@@ -40,11 +40,19 @@ feststeht, und dann einmal neu bereitstellen.
 
 ## 3. Ersten Zugang anlegen
 
-Ohne Zugang bleiben Backoffice und Technikbereich verschlossen.
+Ohne Zugang bleiben Backoffice und Technikbereich verschlossen. Die Anmeldung
+liegt unter `/anmelden`.
 
-1. Supabase → **Authentication → Users → Add user**, E-Mail und Passwort
-   vergeben, „Auto Confirm User" aktivieren
-2. Supabase → **SQL Editor**, mit der eigenen Adresse ausführen:
+Ein Zugang besteht immer aus **zwei** Teilen: dem Benutzer in Supabase Auth und
+einem Eintrag in der Tabelle `profile`. Fehlt der zweite, wird die Anmeldung
+abgewiesen, auch wenn das Passwort stimmt — das ist Absicht, damit ein
+versehentlich angelegter Benutzer nicht sofort an die Verträge kommt.
+
+### Weg 1: über die Oberfläche
+
+1. Supabase → **Authentication → Users → Add user**
+2. E-Mail und Passwort vergeben, **„Auto Confirm User" aktivieren**
+3. Supabase → **SQL Editor**, mit derselben Adresse ausführen:
 
 ```sql
 insert into profile (id, name, rolle)
@@ -52,7 +60,61 @@ select id, 'Daniel Zimmermann', 'admin'
 from auth.users where email = 'hier.die@adresse.de';
 ```
 
-Mögliche Rollen: `admin`, `mitarbeiter`, `techniker`.
+### Weg 2: alles in einem Rutsch
+
+Im **SQL Editor** ausführen, die drei Werte oben vorher anpassen:
+
+```sql
+with angaben as (
+  select
+    'hier.die@adresse.de'::text  as email,
+    'BitteSofortAendern!'::text  as passwort,
+    'Daniel Zimmermann'::text    as name,
+    'admin'::benutzer_rolle      as rolle
+),
+neu as (
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at,
+    raw_app_meta_data, raw_user_meta_data,
+    confirmation_token, recovery_token, email_change, email_change_token_new
+  )
+  select
+    '00000000-0000-0000-0000-000000000000',
+    gen_random_uuid(), 'authenticated', 'authenticated',
+    email, crypt(passwort, gen_salt('bf')),
+    now(), now(), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb,
+    '', '', '', ''
+  from angaben
+  returning id
+)
+insert into profile (id, name, rolle)
+select neu.id, angaben.name, angaben.rolle from neu, angaben
+returning id, name, rolle;
+```
+
+Das Passwort steht dabei kurzzeitig im Klartext im SQL-Editor. Es sollte nach
+der ersten Anmeldung über Supabase → **Authentication → Users → Reset password**
+geändert werden.
+
+### Rollen
+
+| Rolle | Darf |
+|---|---|
+| `admin` | alles, einschließlich Einstellungen und SMTP-Zugang |
+| `mitarbeiter` | Verträge sehen, Status ändern, exportieren |
+| `techniker` | Terminliste und Vor-Ort-Erfassung |
+
+Rolle nachträglich ändern oder Zugang sperren:
+
+```sql
+update profile set rolle = 'techniker' where id = (
+  select id from auth.users where email = 'hier.die@adresse.de');
+
+update profile set aktiv = false where id = (
+  select id from auth.users where email = 'hier.die@adresse.de');
+```
 
 ## 4. Erste Kontrolle
 
