@@ -20,7 +20,12 @@ export default async function BackofficeLayout({
     // soll ohne Umweg über die Adresszeile möglich sein.
     { pfad: "/techniker", text: "Installationen" },
     { pfad: "/backoffice/trichter", text: "Trichter" },
-    ...(istAdmin ? [{ pfad: "/backoffice/einstellungen", text: "Einstellungen" }] : []),
+    ...(istAdmin
+      ? [
+          { pfad: "/backoffice/benutzer", text: "Benutzer" },
+          { pfad: "/backoffice/einstellungen", text: "Einstellungen" },
+        ]
+      : []),
   ];
 
   return (

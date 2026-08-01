@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { db, ladeStammdaten } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
-import { erzeugeToken, GUELTIGKEIT_MINUTEN, zuVieleAnfragen } from "@/lib/passwort";
+import { db } from "@/lib/db";
+import { sendeRuecksetzLink, zuVieleAnfragen } from "@/lib/passwort";
 
 export const runtime = "nodejs";
 
@@ -37,41 +36,13 @@ export async function POST(anfrage: NextRequest) {
     if (!benutzer || !benutzer.aktiv) return allgemeineAntwort;
     if (await zuVieleAnfragen(benutzer.id)) return allgemeineAntwort;
 
-    const { token, hash } = erzeugeToken();
-    const gueltigBis = new Date(Date.now() + GUELTIGKEIT_MINUTEN * 60 * 1000);
-
-    const { error } = await db().from("passwort_anfragen").insert({
-      benutzer_id: benutzer.id,
-      token_hash: hash,
-      gueltig_bis: gueltigBis.toISOString(),
-      angefordert_von: klientAdresse(anfrage),
-    });
-    if (error) throw error;
-
-    const stammdaten = await ladeStammdaten();
-    const basis =
-      process.env.NEXT_PUBLIC_BASIS_URL?.replace(/\/$/, "") ||
-      anfrage.nextUrl.origin;
-    const link = `${basis}/passwort-neu?token=${token}`;
-
-    const absaetze = [
-      `Guten Tag ${benutzer.name || ""},`.trim(),
-      `für Ihren Zugang zum Hausnotruf-Backoffice wurde ein neues Passwort angefordert. Über den folgenden Link können Sie eines vergeben:`,
-      `<a href="${link}" style="display:inline-block;background:#c40004;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Neues Passwort vergeben</a>`,
-      `Der Link gilt ${GUELTIGKEIT_MINUTEN} Minuten und lässt sich nur einmal verwenden.`,
-      `<strong>Sie haben das nicht angefordert?</strong> Dann ignorieren Sie diese Nachricht. Ihr bisheriges Passwort bleibt gültig. Wenden Sie sich an die Administration, wenn Sie solche Nachrichten häufiger erhalten.`,
-      `Falls der Knopf nicht funktioniert, kopieren Sie diese Adresse in Ihren Browser:<br><span style="word-break:break-all;color:#64748b">${link}</span>`,
-    ];
-
-    await sendeMail({
-      an: email,
-      betreff: "Neues Passwort für das Hausnotruf-Backoffice",
-      text: `Für Ihren Zugang wurde ein neues Passwort angefordert.\n\n${link}\n\nDer Link gilt ${GUELTIGKEIT_MINUTEN} Minuten und lässt sich nur einmal verwenden.\n\nSie haben das nicht angefordert? Dann ignorieren Sie diese Nachricht.\n\n${stammdaten.verbandsName}`,
-      html: mailVorlage(
-        "Neues Passwort vergeben",
-        absaetze,
-        `${stammdaten.verbandsName} · ${stammdaten.verbandsAnschrift} · ${stammdaten.telefon}`,
-      ),
+    await sendeRuecksetzLink({
+      benutzerId: benutzer.id,
+      email,
+      name: benutzer.name,
+      art: "vergessen",
+      basisUrl: process.env.NEXT_PUBLIC_BASIS_URL || anfrage.nextUrl.origin,
+      angefordertVon: klientAdresse(anfrage),
     });
   } catch (fehler) {
     // Auch bei einem Fehler bleibt die Antwort gleich, damit sich daraus

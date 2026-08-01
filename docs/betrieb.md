@@ -19,8 +19,9 @@ Security aktiv und es gibt keine Policy, er kommt also an keine Daten.
 
 ## 2. Datenbank einrichten
 
-Das Schema liegt in `supabase/migrations/0001_grundschema.sql`. Einspielen
-entweder über die Supabase-Oberfläche (SQL Editor) oder mit der CLI:
+Das Schema liegt in `supabase/migrations/`. Die Dateien werden der Reihe nach
+eingespielt, `0001_grundschema.sql` zuerst. Einspielen entweder über die
+Supabase-Oberfläche (SQL Editor) oder mit der CLI:
 
 ```bash
 supabase link --project-ref <projekt-ref>
@@ -41,12 +42,34 @@ Es gibt drei Rollen:
 | `mitarbeiter` | Verträge sehen, Status ändern, exportieren |
 | `techniker` | Terminliste und Vor-Ort-Erfassung |
 
-Vorgehen je Zugang:
+Verwaltet werden sie im Backoffice unter **Benutzer** — sichtbar nur für
+Administratoren. Dort lassen sich Zugänge anlegen, umbenennen, in der Rolle
+ändern, deaktivieren, löschen und mit einem neuen Passwort-Link versorgen.
 
-1. In Supabase unter **Authentication → Users** einen Benutzer mit E-Mail und
-   Passwort anlegen.
-2. Im SQL Editor das Profil ergänzen — ohne diesen Schritt ist keine Anmeldung
-   möglich, selbst mit richtigem Passwort:
+Beim Anlegen ist **Einladung per E-Mail** voreingestellt: Die Person bekommt
+einen Link und legt ihr Passwort selbst fest, der Link gilt sieben Tage. Wer
+den Zugang lieber persönlich übergibt, entfernt den Haken und vergibt ein
+Startpasswort (mindestens zehn Zeichen).
+
+Zwei Grenzen sind fest eingebaut, damit sich niemand aussperrt:
+
+- Die eigene Rolle lässt sich nicht ändern, der eigene Zugang nicht
+  deaktivieren oder löschen.
+- Der letzte aktive Administrator bleibt Administrator. Vorher muss ein
+  zweiter angelegt werden.
+
+Gelöscht werden kann nur, wer noch keine Installation erfasst hat — sonst ginge
+der Nachweis verloren, wer das Gerät angeschlossen hat. Für alle anderen ist
+**Deaktivieren** der richtige Weg: Die Anmeldung ist gesperrt, offene Sitzungen
+werden sofort beendet, die Historie bleibt.
+
+### Erster Zugang
+
+Beim allerersten Mal gibt es noch keinen Administrator, der einladen könnte.
+Dieser eine Zugang wird direkt in Supabase angelegt: unter **Authentication →
+Users** einen Benutzer mit E-Mail und Passwort erstellen, danach im SQL Editor
+das Profil ergänzen — ohne diesen Schritt ist keine Anmeldung möglich, selbst
+mit richtigem Passwort:
 
 ```sql
 insert into profile (id, name, rolle)
@@ -66,14 +89,10 @@ Ohne ihn wird zwar ein Link erzeugt, aber nicht zugestellt — und die Seite
 meldet aus Sicherheitsgründen trotzdem Erfolg. Kommt keine E-Mail an, lohnt
 zuerst ein Blick auf die SMTP-Einstellungen und den Spam-Ordner.
 
-Notfalls setzt ein Administrator das Passwort direkt in Supabase zurück:
-**Authentication → Users → ⋯ → Reset password**.
-
-Einen Zugang sperren, ohne ihn zu löschen:
-
-```sql
-update profile set aktiv = false where id = '<benutzer-id>';
-```
+Ein Administrator kann denselben Link auch selbst auslösen: Backoffice →
+**Benutzer** → **Passwort-Link senden**. Er sieht das Passwort dabei nie.
+Notfalls geht es auch direkt in Supabase: **Authentication → Users → ⋯ →
+Reset password**.
 
 ## 4. Bereitstellen
 

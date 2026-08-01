@@ -5,8 +5,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { db } from "./db";
+import type { Rolle } from "./rollen";
 
-export type Rolle = "admin" | "mitarbeiter" | "techniker";
+export type { Rolle };
 
 export interface Angemeldet {
   id: string;
