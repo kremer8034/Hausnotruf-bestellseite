@@ -1,20 +1,9 @@
 import { Karte } from "@/components/ui";
 import { db } from "@/lib/db";
-import { SCHRITTE, SCHRITT_LABEL, Schritt } from "@/lib/typen";
+import { Ereignis, werteAus } from "@/lib/trichter";
+import { SCHRITT_LABEL } from "@/lib/typen";
 
 export const dynamic = "force-dynamic";
-
-/** Schritte in der Reihenfolge, in der Kunden sie durchlaufen. */
-const ABLAUF: Schritt[] = SCHRITTE.filter((s) => s !== "start");
-
-interface Ereignis {
-  sitzung_id: string;
-  schritt: Schritt;
-  art: string;
-  geraet: string | null;
-  quelle: string | null;
-  zeit: string;
-}
 
 export default async function Trichteransicht({
   searchParams,
@@ -34,45 +23,25 @@ export default async function Trichteransicht({
 
   const ereignisse = (data ?? []) as Ereignis[];
 
-  // Je Sitzung merken, welche Schritte gesehen und welche beendet wurden.
-  const sitzungen = new Map<
-    string,
-    { gesehen: Set<Schritt>; beendet: Set<Schritt>; geraet: string | null; quelle: string | null }
-  >();
-  for (const e of ereignisse) {
-    let s = sitzungen.get(e.sitzung_id);
-    if (!s) {
-      s = { gesehen: new Set(), beendet: new Set(), geraet: e.geraet, quelle: e.quelle };
-      sitzungen.set(e.sitzung_id, s);
-    }
-    if (e.art === "angesehen") s.gesehen.add(e.schritt);
-    if (e.art === "abgeschlossen") s.beendet.add(e.schritt);
-    if (!s.geraet && e.geraet) s.geraet = e.geraet;
-    if (!s.quelle && e.quelle) s.quelle = e.quelle;
-  }
+  // Die Zahl der Abschlüsse kommt aus dem Vertragsbestand, nicht aus den
+  // Meldungen des Browsers: Die letzte Meldung geht per sendBeacon raus und
+  // kann verlorengehen, wenn der Kunde das Fenster sofort schließt. Ein
+  // geschlossener Vertrag steht dagegen fest.
+  const { count: vertraege } = await db()
+    .from("vertraege")
+    .select("id", { count: "exact", head: true })
+    .gte("erstellt_am", seit);
 
-  const gesamtSitzungen = sitzungen.size;
-  const abschluesse = [...sitzungen.values()].filter((s) =>
-    s.gesehen.has("abgeschlossen"),
-  ).length;
-
-  const stufen = ABLAUF.filter((s) => s !== "abgeschlossen").map((schritt) => {
-    const erreicht = [...sitzungen.values()].filter((s) => s.gesehen.has(schritt)).length;
-    const beendet = [...sitzungen.values()].filter((s) => s.beendet.has(schritt)).length;
-    return {
-      schritt,
-      erreicht,
-      beendet,
-      abbrueche: Math.max(0, erreicht - beendet),
-      abbruchquote: erreicht > 0 ? (erreicht - beendet) / erreicht : 0,
-    };
-  });
-
-  const groesstesLeck = [...stufen].sort((a, b) => b.abbrueche - a.abbrueche)[0];
-  const geraete = zaehle([...sitzungen.values()].map((s) => s.geraet ?? "unbekannt"));
-  const quellen = zaehle(
-    [...sitzungen.values()].map((s) => s.quelle || "Direktaufruf"),
-  );
+  const {
+    gesamtSitzungen,
+    sitzungenMitAbschluss,
+    abschluesse,
+    abschlussquote,
+    stufen,
+    groesstesLeck,
+    geraete,
+    quellen,
+  } = werteAus(ereignisse, vertraege ?? 0);
 
   return (
     <>
@@ -108,14 +77,25 @@ export default async function Trichteransicht({
       )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Kennzahl titel="Begonnene Bestellungen" wert={String(gesamtSitzungen)} />
-        <Kennzahl titel="Abgeschlossene Verträge" wert={String(abschluesse)} />
+        <Kennzahl
+          titel="Begonnene Bestellungen"
+          wert={String(gesamtSitzungen)}
+          fussnote="Besucher, die den Assistenten geöffnet haben"
+        />
+        <Kennzahl
+          titel="Abgeschlossene Verträge"
+          wert={String(abschluesse)}
+          fussnote="gezählt im Vertragsbestand"
+        />
         <Kennzahl
           titel="Abschlussquote"
           wert={
+            abschlussquote !== null ? `${Math.round(abschlussquote * 100)} %` : "—"
+          }
+          fussnote={
             gesamtSitzungen > 0
-              ? `${Math.round((abschluesse / gesamtSitzungen) * 100)} %`
-              : "—"
+              ? `${sitzungenMitAbschluss} von ${gesamtSitzungen} Besuchern`
+              : undefined
           }
         />
       </div>
@@ -185,13 +165,22 @@ export default async function Trichteransicht({
   );
 }
 
-function Kennzahl({ titel, wert }: { titel: string; wert: string }) {
+function Kennzahl({
+  titel,
+  wert,
+  fussnote,
+}: {
+  titel: string;
+  wert: string;
+  fussnote?: string;
+}) {
   return (
     <div className="rounded-xl border border-tinte-200 bg-white p-5">
       <p className="text-xs font-semibold tracking-wide text-tinte-500 uppercase">
         {titel}
       </p>
       <p className="mt-1 text-2xl font-bold text-tinte-900">{wert}</p>
+      {fussnote && <p className="mt-0.5 text-xs text-tinte-500">{fussnote}</p>}
     </div>
   );
 }
@@ -231,10 +220,4 @@ function beschriftung(name: string): string {
       name
     ] ?? name
   );
-}
-
-function zaehle(werte: string[]): [string, number][] {
-  const zaehler = new Map<string, number>();
-  for (const wert of werte) zaehler.set(wert, (zaehler.get(wert) ?? 0) + 1);
-  return [...zaehler.entries()].sort((a, b) => b[1] - a[1]);
 }

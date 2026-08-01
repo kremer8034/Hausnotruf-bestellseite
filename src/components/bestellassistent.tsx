@@ -349,6 +349,10 @@ export function Bestellassistent({
         setSendefehler(ergebnis.fehler ?? "Der Vertrag konnte nicht abgeschlossen werden.");
         return;
       }
+      // Zwei Meldungen: Die Zusammenfassung ist beendet – ohne sie stünde sie
+      // im Trichter als Totalabsprung, obwohl hier gerade der Vertrag zustande
+      // kam. Und der Abschluss selbst.
+      melde(schritt.id, "abgeschlossen");
       melde("abgeschlossen", "abgeschlossen");
       setErfolg(ergebnis.vorgangsnummer);
     } catch {
