@@ -1,7 +1,9 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { NextRequest, NextResponse } from "next/server";
 
 import { db, ladeStammdaten } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
+import { htmlText, mailVorlage, sendeMail } from "@/lib/mail";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -18,7 +20,9 @@ export const maxDuration = 60;
 export async function GET(anfrage: NextRequest) {
   const geheimnis = process.env.CRON_SECRET;
   const kopf = anfrage.headers.get("authorization");
-  if (!geheimnis || kopf !== `Bearer ${geheimnis}`) {
+  // Ohne gesetztes Geheimnis bleibt der Endpunkt zu – lieber ein ausgefallener
+  // Aufräumlauf als ein offener Endpunkt.
+  if (!geheimnis || !gleichLang(kopf ?? "", `Bearer ${geheimnis}`)) {
     return NextResponse.json({ fehler: "Nicht berechtigt" }, { status: 401 });
   }
 
@@ -59,9 +63,9 @@ export async function GET(anfrage: NextRequest) {
             "Sie waren fast fertig",
             [
               "Guten Tag,",
-              `Sie haben eine Bestellung${name} begonnen, aber noch nicht abgeschlossen. Ihre bisherigen Angaben haben wir gespeichert.`,
-              `<a href="${link}" style="display:inline-block;background:#c40004;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Bestellung fortsetzen</a>`,
-              `Sie haben noch Fragen? Rufen Sie uns an: <strong>${stammdaten.telefon}</strong>. Wir helfen gern weiter.`,
+              `Sie haben eine Bestellung${htmlText(name)} begonnen, aber noch nicht abgeschlossen. Ihre bisherigen Angaben haben wir gespeichert.`,
+              `<a href="${htmlText(link)}" style="display:inline-block;background:#c40004;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Bestellung fortsetzen</a>`,
+              `Sie haben noch Fragen? Rufen Sie uns an: <strong>${htmlText(stammdaten.telefon)}</strong>. Wir helfen gern weiter.`,
               "Falls Sie sich anders entschieden haben, ignorieren Sie diese Nachricht einfach. Ihre Angaben löschen wir dann nach 30 Tagen automatisch.",
             ],
             `${stammdaten.verbandsName} · ${stammdaten.verbandsAnschrift} · ${stammdaten.telefon}`,
@@ -93,9 +97,30 @@ export async function GET(anfrage: NextRequest) {
       console.error("Passwort-Anfragen aufräumen fehlgeschlagen:", fehler);
     }
 
-    return NextResponse.json({ ok: true, erinnert, geloescht, passwortAnfragen });
+    // Die Zähler der Missbrauchsbremse braucht niemand länger als zwei Tage.
+    let zaehler = 0;
+    try {
+      const { data } = await db().rpc("raeume_zugriffszaehler");
+      zaehler = (data as number | null) ?? 0;
+    } catch (fehler) {
+      console.error("Zugriffszähler aufräumen fehlgeschlagen:", fehler);
+    }
+
+    return NextResponse.json({ ok: true, erinnert, geloescht, passwortAnfragen, zaehler });
   } catch (fehler) {
     console.error("Aufräumen fehlgeschlagen:", fehler);
-    return NextResponse.json({ fehler: (fehler as Error).message }, { status: 500 });
+    return NextResponse.json({ fehler: "Der Lauf ist fehlgeschlagen." }, { status: 500 });
   }
+}
+
+/**
+ * Vergleich in konstanter Zeit.
+ *
+ * Über die Hashes, weil timingSafeEqual gleich lange Puffer verlangt – sonst
+ * verriete schon die Länge des Vergleichs etwas über das Geheimnis.
+ */
+function gleichLang(a: string, b: string): boolean {
+  const links = createHash("sha256").update(a).digest();
+  const rechts = createHash("sha256").update(b).digest();
+  return timingSafeEqual(links, rechts);
 }

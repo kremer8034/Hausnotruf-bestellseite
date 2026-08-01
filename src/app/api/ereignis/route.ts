@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
+import {
+  fremdeHerkunftAntwort,
+  herkunftStimmt,
+  imRahmen,
+  klientAdresse,
+  leseKoerper,
+  zuGrossAntwort,
+  ZU_GROSS,
+} from "@/lib/schutz";
 import { SCHRITTE } from "@/lib/typen";
 
 /**
@@ -20,12 +29,22 @@ const schema = z.object({
 });
 
 export async function POST(anfrage: NextRequest) {
-  let eingabe;
-  try {
-    eingabe = schema.parse(await anfrage.json());
-  } catch {
+  if (!herkunftStimmt(anfrage)) return fremdeHerkunftAntwort();
+
+  const koerper = await leseKoerper(anfrage, 8 * 1024);
+  if (koerper === ZU_GROSS) return zuGrossAntwort();
+
+  // Die Trichterzahlen sind nur so viel wert, wie sie echt sind. Ohne Bremse
+  // könnte jemand die Auswertung mit erfundenen Schritten unbrauchbar machen.
+  if (!(await imRahmen("ereignis", klientAdresse(anfrage)))) {
+    return NextResponse.json({ ok: false });
+  }
+
+  const geprueft = schema.safeParse(koerper);
+  if (!geprueft.success) {
     return NextResponse.json({ fehler: "Ungültige Daten" }, { status: 400 });
   }
+  const eingabe = geprueft.data;
 
   try {
     await db().from("ereignisse").insert({

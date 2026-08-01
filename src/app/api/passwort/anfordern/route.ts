@@ -3,6 +3,15 @@ import { z } from "zod";
 
 import { db } from "@/lib/db";
 import { sendeRuecksetzLink, zuVieleAnfragen } from "@/lib/passwort";
+import {
+  fremdeHerkunftAntwort,
+  herkunftStimmt,
+  imRahmen,
+  klientAdresse,
+  leseKoerper,
+  zuGrossAntwort,
+  ZU_GROSS,
+} from "@/lib/schutz";
 
 export const runtime = "nodejs";
 
@@ -16,13 +25,24 @@ const schema = z.object({ email: z.string().trim().email() });
  * haben - und das wäre eine Vorlage für gezielte Angriffe.
  */
 export async function POST(anfrage: NextRequest) {
-  const eingabe = schema.safeParse(await anfrage.json().catch(() => null));
+  if (!herkunftStimmt(anfrage)) return fremdeHerkunftAntwort();
+
+  const koerper = await leseKoerper(anfrage, 8 * 1024);
+  if (koerper === ZU_GROSS) return zuGrossAntwort();
+
+  const eingabe = schema.safeParse(koerper);
   const allgemeineAntwort = NextResponse.json({
     ok: true,
     hinweis:
       "Wenn zu dieser Adresse ein Zugang besteht, ist eine E-Mail mit einem Link unterwegs.",
   });
   if (!eingabe.success) return allgemeineAntwort;
+
+  // Neben der Grenze je Konto auch eine je Anschluss: sonst ließen sich über
+  // wechselnde Adressen beliebig viele Nachrichten auslösen.
+  if (!(await imRahmen("passwortIp", klientAdresse(anfrage)))) {
+    return allgemeineAntwort;
+  }
 
   const email = eingabe.data.email.toLowerCase();
 
@@ -58,10 +78,4 @@ async function benutzerIdZu(email: string): Promise<string> {
   const { data } = await db().rpc("benutzer_id_zu_email", { p_email: email });
   // Eine Kennung, die es sicher nicht gibt – die Abfrage läuft dann ins Leere.
   return (data as string | null) ?? "00000000-0000-0000-0000-000000000000";
-}
-
-function klientAdresse(anfrage: NextRequest): string | null {
-  const weitergeleitet = anfrage.headers.get("x-forwarded-for");
-  if (weitergeleitet) return weitergeleitet.split(",")[0]!.trim();
-  return anfrage.headers.get("x-real-ip");
 }

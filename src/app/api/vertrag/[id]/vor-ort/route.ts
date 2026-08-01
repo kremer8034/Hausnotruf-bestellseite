@@ -3,8 +3,17 @@ import { z } from "zod";
 
 import { verlangeRolle } from "@/lib/auth";
 import { db, ladeStammdaten } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
+import { htmlText, mailVorlage, sendeMail } from "@/lib/mail";
 import { Bestellung, VorOrtErfassung } from "@/lib/typen";
+import {
+  imRahmen,
+  klientAdresse,
+  leseKoerper,
+  zuGrossAntwort,
+  zuVieleAnfragenAntwort,
+  ZU_GROSS,
+} from "@/lib/schutz";
+import { MAX_KURZ, MAX_LANG, unterschriftSchema } from "@/lib/validierung";
 import {
   anredeFuer,
   empfaengerAdresse,
@@ -17,36 +26,36 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const geraetSchema = z.object({
-  bezeichnung: z.string().trim().default(""),
-  idNummer: z.string().trim().default(""),
+  bezeichnung: z.string().trim().max(MAX_KURZ).default(""),
+  idNummer: z.string().trim().max(60).default(""),
 });
 
 const schema = z.object({
   mietgeraete: z.array(geraetSchema).max(5),
-  technischeVoraussetzungen: z.string().trim().default(""),
+  technischeVoraussetzungen: z.string().trim().max(MAX_LANG).default(""),
   gesundheit: z.object({
-    koerperlich: z.array(z.string()),
-    geistig: z.array(z.string()),
-    anmerkungKoerperlich: z.string().trim().default(""),
-    anmerkungGeistig: z.string().trim().default(""),
-    medikamente: z.string().trim().default(""),
-    medikamentenallergien: z.string().trim().default(""),
+    koerperlich: z.array(z.string().max(MAX_KURZ)).max(40),
+    geistig: z.array(z.string().max(MAX_KURZ)).max(20),
+    anmerkungKoerperlich: z.string().trim().max(MAX_LANG).default(""),
+    anmerkungGeistig: z.string().trim().max(MAX_LANG).default(""),
+    medikamente: z.string().trim().max(MAX_LANG).default(""),
+    medikamentenallergien: z.string().trim().max(MAX_LANG).default(""),
   }),
   datumInbetriebnahme: z.string().regex(/^\d{2}\.\d{2}\.\d{4}$/, "Datum als TT.MM.JJJJ"),
-  vorgangsnummer: z.string().trim(),
-  versorgungAb: z.string().trim().default(""),
+  vorgangsnummer: z.string().trim().max(40),
+  versorgungAb: z.string().trim().max(40).default(""),
   anwesendVertreter: z.boolean(),
   anwesendBetreuer: z.boolean(),
   anwesendSonstige: z.boolean(),
-  ortInbetriebnahme: z.string().trim().min(1, "Ort bitte angeben"),
-  unterschriftLeistungserbringer: z.string().startsWith("data:image/png;base64,"),
-  unterschriftTeilnehmer: z.string().startsWith("data:image/png;base64,"),
+  ortInbetriebnahme: z.string().trim().min(1, "Ort bitte angeben").max(MAX_KURZ),
+  unterschriftLeistungserbringer: unterschriftSchema("Bitte unterschreiben."),
+  unterschriftTeilnehmer: unterschriftSchema("Bitte unterschreiben lassen."),
   kaufGeraete: z
     .array(
       z.object({
-        bezeichnung: z.string().trim().default(""),
-        seriennummer: z.string().trim().default(""),
-        kosten: z.string().trim().default(""),
+        bezeichnung: z.string().trim().max(MAX_KURZ).default(""),
+        seriennummer: z.string().trim().max(60).default(""),
+        kosten: z.string().trim().max(20).default(""),
       }),
     )
     .max(3),
@@ -64,7 +73,19 @@ export async function POST(
   const benutzer = await verlangeRolle(["techniker", "admin", "mitarbeiter"]);
   const { id } = await params;
 
-  const geprueft = schema.safeParse(await anfrage.json().catch(() => null));
+  // Vier Unterschriften plus Freitext – 4 MB sind reichlich bemessen.
+  const koerper = await leseKoerper(anfrage, 4 * 1024 * 1024);
+  if (koerper === ZU_GROSS) return zuGrossAntwort();
+
+  // Auch ein echter Zugang soll nicht versehentlich in einer Schleife
+  // dutzende Gesamtverträge erzeugen und verschicken.
+  if (!(await imRahmen("vorOrt", klientAdresse(anfrage)))) {
+    return zuVieleAnfragenAntwort(
+      "Es wurden zu viele Installationen in kurzer Zeit gemeldet. Bitte kurz warten.",
+    );
+  }
+
+  const geprueft = schema.safeParse(koerper);
   if (!geprueft.success) {
     return NextResponse.json(
       { fehler: geprueft.error.errors[0]?.message ?? "Ungültige Angaben" },
@@ -124,13 +145,13 @@ export async function POST(
         .map((g) => g.bezeichnung)
         .join(", ");
       const absaetze = [
-        `${anredeFuer(bestellung)},`,
-        `Ihr Hausnotruf ist seit dem ${vorOrt.datumInbetriebnahme} in Betrieb. Im Anhang finden Sie den vollständigen Vertrag – jetzt ergänzt um die eingebauten Geräte, die technischen Angaben und die Inbetriebnahme.`,
+        `${htmlText(anredeFuer(bestellung))},`,
+        `Ihr Hausnotruf ist seit dem ${htmlText(vorOrt.datumInbetriebnahme)} in Betrieb. Im Anhang finden Sie den vollständigen Vertrag – jetzt ergänzt um die eingebauten Geräte, die technischen Angaben und die Inbetriebnahme.`,
         geraete
-          ? `<strong>Eingebaute Geräte:</strong> ${geraete}`
+          ? `<strong>Eingebaute Geräte:</strong> ${htmlText(geraete)}`
           : "",
         `Bitte bewahren Sie dieses Dokument auf. Es ersetzt die Fassung, die Sie beim Vertragsabschluss erhalten haben.`,
-        `Im Notfall genügt ein Druck auf den Funksender. Unsere Notrufzentrale meldet sich und schickt Hilfe. Bei Fragen zur Bedienung erreichen Sie uns unter ${stammdaten.telefon}.`,
+        `Im Notfall genügt ein Druck auf den Funksender. Unsere Notrufzentrale meldet sich und schickt Hilfe. Bei Fragen zur Bedienung erreichen Sie uns unter ${htmlText(stammdaten.telefon)}.`,
       ].filter(Boolean);
 
       await sendeMailSicher({
@@ -149,10 +170,10 @@ export async function POST(
       html: mailVorlage(
         "Installation abgeschlossen",
         [
-          `Die Installation für <strong>${teilnehmerName}</strong> (${paketName(bestellung.paketId)}) ist am ${vorOrt.datumInbetriebnahme} abgeschlossen worden.`,
-          `Erfasst durch ${benutzer.name}. Der Gesamtvertrag mit allen Unterschriften liegt im Anhang und im Backoffice.`,
+          `Die Installation für <strong>${htmlText(teilnehmerName)}</strong> (${htmlText(paketName(bestellung.paketId))}) ist am ${htmlText(vorOrt.datumInbetriebnahme)} abgeschlossen worden.`,
+          `Erfasst durch ${htmlText(benutzer.name)}. Der Gesamtvertrag mit allen Unterschriften liegt im Anhang und im Backoffice.`,
           empfaenger
-            ? `Der Kunde hat das Dokument ebenfalls erhalten (${empfaenger}).`
+            ? `Der Kunde hat das Dokument ebenfalls erhalten (${htmlText(empfaenger)}).`
             : `<strong>Achtung:</strong> Für diesen Vertrag ist keine E-Mail-Adresse hinterlegt – der Kunde hat das Dokument nicht erhalten.`,
         ],
         vertrag.vorgangsnummer,
@@ -163,7 +184,10 @@ export async function POST(
     return NextResponse.json({ ok: true });
   } catch (fehler) {
     console.error("Vor-Ort-Erfassung fehlgeschlagen:", fehler);
-    return NextResponse.json({ fehler: (fehler as Error).message }, { status: 500 });
+    return NextResponse.json(
+      { fehler: "Die Erfassung konnte nicht gespeichert werden. Bitte erneut versuchen." },
+      { status: 500 },
+    );
   }
 }
 

@@ -53,6 +53,24 @@ export async function pruefeSmtp(): Promise<void> {
   await transport(smtp).verify();
 }
 
+/**
+ * Entschärft Text, der in eine HTML-Mail eingesetzt wird.
+ *
+ * Namen, Anschriften und Hinweise kommen aus einem offenen Formular. Ohne
+ * diese Umwandlung könnte jemand über ein Eingabefeld eigenes Markup in die
+ * Nachricht ans Backoffice schmuggeln – etwa einen Link, der wie unserer
+ * aussieht, aber woanders hinführt. Die Absätze der Vorlage dürfen weiterhin
+ * Markup enthalten; nur die eingesetzten Werte laufen durch diese Funktion.
+ */
+export function htmlText(wert: unknown): string {
+  return String(wert ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /** Schlichtes HTML-Gerüst – E-Mail-Clients vertragen kein modernes CSS. */
 export function mailVorlage(titel: string, absaetze: string[], fuss: string): string {
   const inhalt = absaetze
@@ -66,10 +84,10 @@ export function mailVorlage(titel: string, absaetze: string[], fuss: string): st
 <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px" cellpadding="0" cellspacing="0">
 <tr><td style="padding:24px 28px 8px">
 <div style="font-size:13px;font-weight:bold;color:#e60005;letter-spacing:.04em;text-transform:uppercase">Bayerisches Rotes Kreuz</div>
-<h1 style="margin:6px 0 18px;font-size:20px;color:#0f172a">${titel}</h1>
+<h1 style="margin:6px 0 18px;font-size:20px;color:#0f172a">${htmlText(titel)}</h1>
 ${inhalt}
 </td></tr>
 <tr><td style="padding:8px 28px 24px;border-top:1px solid #e2e8f0">
-<p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#64748b">${fuss}</p>
+<p style="margin:14px 0 0;font-size:12px;line-height:1.6;color:#64748b">${htmlText(fuss)}</p>
 </td></tr></table></td></tr></table></body></html>`;
 }

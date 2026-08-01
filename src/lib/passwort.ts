@@ -3,7 +3,7 @@ import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { db, ladeStammdaten } from "./db";
-import { mailVorlage, sendeMail } from "./mail";
+import { htmlText, mailVorlage, sendeMail } from "./mail";
 
 /** Wie lange ein Rücksetz-Link gilt. Kurz genug, um Missbrauch zu begrenzen. */
 export const GUELTIGKEIT_MINUTEN = 60;
@@ -117,16 +117,16 @@ export async function sendeRuecksetzLink(opt: {
   const knopf = einladung ? "Passwort festlegen" : "Neues Passwort vergeben";
 
   const absaetze = [
-    `Guten Tag ${opt.name || ""},`.trim(),
+    `Guten Tag ${htmlText(opt.name)},`.replace(" ,", ","),
     einladung
-      ? `für Sie wurde ein Zugang zum Hausnotruf-Backoffice des ${stammdaten.verbandsName} eingerichtet. Bitte legen Sie über den folgenden Link Ihr persönliches Passwort fest:`
+      ? `für Sie wurde ein Zugang zum Hausnotruf-Backoffice des ${htmlText(stammdaten.verbandsName)} eingerichtet. Bitte legen Sie über den folgenden Link Ihr persönliches Passwort fest:`
       : `für Ihren Zugang zum Hausnotruf-Backoffice wurde ein neues Passwort angefordert. Über den folgenden Link können Sie eines vergeben:`,
-    `<a href="${link}" style="display:inline-block;background:#c40004;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">${knopf}</a>`,
+    `<a href="${htmlText(link)}" style="display:inline-block;background:#c40004;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">${knopf}</a>`,
     `Der Link gilt ${frist} und lässt sich nur einmal verwenden.`,
     einladung
       ? `Anmelden können Sie sich anschließend jederzeit mit dieser E-Mail-Adresse und Ihrem Passwort.`
       : `<strong>Sie haben das nicht angefordert?</strong> Dann ignorieren Sie diese Nachricht. Ihr bisheriges Passwort bleibt gültig. Wenden Sie sich an die Administration, wenn Sie solche Nachrichten häufiger erhalten.`,
-    `Falls der Knopf nicht funktioniert, kopieren Sie diese Adresse in Ihren Browser:<br><span style="word-break:break-all;color:#64748b">${link}</span>`,
+    `Falls der Knopf nicht funktioniert, kopieren Sie diese Adresse in Ihren Browser:<br><span style="word-break:break-all;color:#64748b">${htmlText(link)}</span>`,
   ];
 
   await sendeMail({

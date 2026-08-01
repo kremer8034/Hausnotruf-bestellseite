@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { verlangeRolle } from "@/lib/auth";
 import { db, ladeStammdaten } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
+import { htmlText, mailVorlage, sendeMail } from "@/lib/mail";
 import { BEZUGSARTEN, Bestellung, VorOrtErfassung } from "@/lib/typen";
 import {
   anredeFuer,
@@ -11,7 +11,13 @@ import {
   erzeugeVertragsPdf,
   legeAb,
 } from "@/lib/vertrag";
-import { anredeSchema, ibanGueltig, TELEFON_MUSTER } from "@/lib/validierung";
+import {
+  anredeSchema,
+  ibanGueltig,
+  MAX_KURZ,
+  MAX_LANG,
+  TELEFON_MUSTER,
+} from "@/lib/validierung";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,54 +33,57 @@ const bearbeitenSchema = z.object({
   vertragsnummer: z.string().trim().max(40).default(""),
   teilnehmer: z.object({
     anrede: anredeSchema,
-    vorname: z.string().trim().min(1, "Vorname bitte ausfüllen."),
-    nachname: z.string().trim().min(1, "Nachname bitte ausfüllen."),
+    vorname: z.string().trim().min(1, "Vorname bitte ausfüllen.").max(MAX_KURZ),
+    nachname: z.string().trim().min(1, "Nachname bitte ausfüllen.").max(MAX_KURZ),
     geburtsdatum: z
       .string()
       .regex(/^\d{2}\.\d{2}\.\d{4}$/, "Geburtsdatum bitte als TT.MM.JJJJ angeben."),
-    strasse: z.string().trim().min(1, "Straße bitte ausfüllen."),
+    strasse: z.string().trim().min(1, "Straße bitte ausfüllen.").max(MAX_KURZ),
     plz: z.string().regex(/^\d{5}$/, "Die Postleitzahl hat fünf Ziffern."),
-    ort: z.string().trim().min(1, "Ort bitte ausfüllen."),
+    ort: z.string().trim().min(1, "Ort bitte ausfüllen.").max(MAX_KURZ),
     telefon: z
       .string()
       .trim()
+      .max(40)
       .regex(TELEFON_MUSTER, "Die Telefonnummer enthält ungültige Zeichen."),
     email: z
       .string()
       .trim()
+      .max(200)
       .email("Bitte eine gültige E-Mail-Adresse angeben.")
       .or(z.literal("")),
   }),
   pflegegrad: z.enum(["ohne", "1", "2", "3", "4", "5"]),
-  pflegekasseName: z.string().trim().default(""),
-  pflegekasseAnschrift: z.string().trim().default(""),
-  versichertennummer: z.string().trim().default(""),
-  telefonanbieter: z.string().trim().default(""),
-  geraeteRufnummer: z.string().trim().default(""),
-  keySafeStandortWunsch: z.string().trim().default(""),
-  zugangshinweise: z.string().trim().default(""),
-  hausarztName: z.string().trim().default(""),
-  hausarztTelefon: z.string().trim().default(""),
-  notfallhinweise: z.string().trim().default(""),
+  pflegekasseName: z.string().trim().max(MAX_KURZ).default(""),
+  pflegekasseAnschrift: z.string().trim().max(200).default(""),
+  versichertennummer: z.string().trim().max(40).default(""),
+  telefonanbieter: z.string().trim().max(MAX_KURZ).default(""),
+  geraeteRufnummer: z.string().trim().max(40).default(""),
+  keySafeStandortWunsch: z.string().trim().max(200).default(""),
+  zugangshinweise: z.string().trim().max(MAX_LANG).default(""),
+  hausarztName: z.string().trim().max(MAX_KURZ).default(""),
+  hausarztTelefon: z.string().trim().max(40).default(""),
+  notfallhinweise: z.string().trim().max(MAX_LANG).default(""),
   kontaktpersonen: z
     .array(
       z.object({
-        name: z.string().trim().default(""),
+        name: z.string().trim().max(MAX_KURZ).default(""),
         bezugsart: z.enum(BEZUGSARTEN),
-        telefon: z.string().trim().default(""),
-        anschrift: z.string().trim().default(""),
+        telefon: z.string().trim().max(40).default(""),
+        anschrift: z.string().trim().max(200).default(""),
         schluesselVorhanden: z.boolean(),
       }),
     )
     .max(4),
-  sepaKontoinhaber: z.string().trim().min(1, "Kontoinhaber bitte ausfüllen."),
-  sepaAnschrift: z.string().trim().min(1, "Anschrift des Kontoinhabers bitte ausfüllen."),
+  sepaKontoinhaber: z.string().trim().min(1, "Kontoinhaber bitte ausfüllen.").max(MAX_KURZ),
+  sepaAnschrift: z.string().trim().min(1, "Anschrift des Kontoinhabers bitte ausfüllen.").max(200),
   sepaIban: z
     .string()
     .trim()
+    .max(42)
     .refine(ibanGueltig, "Diese IBAN ist nicht gültig."),
-  sepaBic: z.string().trim().default(""),
-  sepaBank: z.string().trim().default(""),
+  sepaBic: z.string().trim().max(20).default(""),
+  sepaBank: z.string().trim().max(MAX_KURZ).default(""),
   notiz: z.string().trim().max(2000).default(""),
   /** Kunde über die geänderte Fassung informieren. */
   kundeBenachrichtigen: z.boolean().default(false),
@@ -224,10 +233,10 @@ export async function PUT(
       if (empfaenger) {
         const stammdaten = await ladeStammdaten();
         const absaetze = [
-          `${anredeFuer(neu)},`,
+          `${htmlText(anredeFuer(neu))},`,
           `wir haben Ihren Hausnotruf-Vertrag ergänzt beziehungsweise berichtigt. Im Anhang finden Sie die aktuelle Fassung.`,
-          `Geändert wurde: ${geaendert.join(", ")}.`,
-          `Diese Fassung ersetzt die Ihnen bisher vorliegende. Bitte bewahren Sie sie auf. Wenn etwas nicht stimmt, melden Sie sich bitte unter ${stammdaten.telefon}.`,
+          `Geändert wurde: ${htmlText(geaendert.join(", "))}.`,
+          `Diese Fassung ersetzt die Ihnen bisher vorliegende. Bitte bewahren Sie sie auf. Wenn etwas nicht stimmt, melden Sie sich bitte unter ${htmlText(stammdaten.telefon)}.`,
         ];
         try {
           await sendeMail({

@@ -5,8 +5,41 @@ import { BEZUGSARTEN } from "./typen";
 
 export const TELEFON_MUSTER = /^[\d\s+()/-]+$/;
 
-const pflichttext = (feld: string, min = 2) =>
-  z.string().trim().min(min, `${feld} bitte ausfüllen.`);
+/**
+ * Obergrenzen für Freitext.
+ *
+ * Nicht nur der Ordnung halber: Ohne Grenze könnte jemand megabyteweise Text
+ * schicken, den wir speichern, ins PDF zeichnen und per E-Mail verschicken.
+ * Die Werte orientieren sich am Platz, den das Vertragsformular tatsächlich
+ * bietet.
+ */
+export const MAX_KURZ = 120;
+export const MAX_LANG = 2000;
+
+const kurztext = (max = MAX_KURZ) => z.string().trim().max(max, "Diese Angabe ist zu lang.");
+
+const pflichttext = (feld: string, min = 2, max = MAX_KURZ) =>
+  z.string().trim().min(min, `${feld} bitte ausfüllen.`).max(max, "Diese Angabe ist zu lang.");
+
+/**
+ * Prüft eine gezeichnete Unterschrift.
+ *
+ * Der Präfix allein genügt nicht: Dahinter darf beliebig viel stehen. Geprüft
+ * werden deshalb auch das Base64-Alphabet und die Größe. 1 MB reicht für eine
+ * Unterschrift auf Leinwandgröße um ein Vielfaches.
+ */
+export const UNTERSCHRIFT_MAX_ZEICHEN = 1_400_000;
+
+export function unterschriftSchema(meldung: string) {
+  return z
+    .string()
+    .startsWith("data:image/png;base64,", meldung)
+    .max(UNTERSCHRIFT_MAX_ZEICHEN, "Die Unterschrift ist zu groß.")
+    .refine(
+      (wert) => /^[A-Za-z0-9+/]+=*$/.test(wert.slice("data:image/png;base64,".length)),
+      "Die Unterschrift konnte nicht gelesen werden.",
+    );
+}
 
 /** Prüfziffer nach ISO 13616 (Modulo 97). Fängt Zahlendreher zuverlässig ab. */
 export function ibanGueltig(roh: string): boolean {
@@ -54,15 +87,25 @@ export const personSchema = z.object({
     .string()
     .trim()
     .min(6, "Bitte eine erreichbare Telefonnummer angeben.")
+    .max(40, "Diese Telefonnummer ist zu lang.")
     .regex(TELEFON_MUSTER, "Die Telefonnummer enthält ungültige Zeichen."),
-  email: z.string().trim().email("Bitte eine gültige E-Mail-Adresse angeben.").or(z.literal("")),
+  email: z
+    .string()
+    .trim()
+    .max(200, "Diese E-Mail-Adresse ist zu lang.")
+    .email("Bitte eine gültige E-Mail-Adresse angeben.")
+    .or(z.literal("")),
 });
 
 export const kontaktpersonSchema = z.object({
   name: pflichttext("Name der Kontaktperson"),
   bezugsart: z.enum(BEZUGSARTEN),
-  telefon: z.string().trim().min(6, "Bitte eine Telefonnummer angeben."),
-  anschrift: z.string().trim().default(""),
+  telefon: z
+    .string()
+    .trim()
+    .min(6, "Bitte eine Telefonnummer angeben.")
+    .max(40, "Diese Telefonnummer ist zu lang."),
+  anschrift: kurztext(200).default(""),
   schluesselVorhanden: z.boolean(),
 });
 
@@ -74,8 +117,16 @@ export const bestellungSchema = z
         anrede: anredeSchema,
         vorname: pflichttext("Ihr Vorname"),
         nachname: pflichttext("Ihr Nachname"),
-        telefon: z.string().trim().min(6, "Bitte eine Telefonnummer angeben."),
-        email: z.string().trim().email("Bitte eine gültige E-Mail-Adresse angeben."),
+        telefon: z
+          .string()
+          .trim()
+          .min(6, "Bitte eine Telefonnummer angeben.")
+          .max(40, "Diese Telefonnummer ist zu lang."),
+        email: z
+          .string()
+          .trim()
+          .max(200, "Diese E-Mail-Adresse ist zu lang.")
+          .email("Bitte eine gültige E-Mail-Adresse angeben."),
         bevollmaechtigt: z.literal(true, {
           errorMap: () => ({
             message:
@@ -89,9 +140,9 @@ export const bestellungSchema = z
 
     pflegegrad: z.enum(["ohne", "1", "2", "3", "4", "5"]),
     kostenuebernahme: z.boolean(),
-    pflegekasseName: z.string().trim().default(""),
-    pflegekasseAnschrift: z.string().trim().default(""),
-    versichertennummer: z.string().trim().default(""),
+    pflegekasseName: kurztext().default(""),
+    pflegekasseAnschrift: kurztext(200).default(""),
+    versichertennummer: kurztext(40).default(""),
     grundAlleinlebend: z.boolean(),
     grundNotsituation: z.boolean(),
 
@@ -99,33 +150,34 @@ export const bestellungSchema = z
     optionen: z.array(z.enum(ZUSATZOPTIONEN.map((o) => o.id) as [string, ...string[]])),
 
     anschlussart: z.enum(["gsm", "voip", "msan", "unbekannt"]),
-    telefonanbieter: z.string().trim().default(""),
-    geraeteRufnummer: z.string().trim().default(""),
+    telefonanbieter: kurztext().default(""),
+    geraeteRufnummer: kurztext(40).default(""),
 
     kontaktpersonen: z
       .array(kontaktpersonSchema)
       .min(1, "Bitte mindestens eine Kontaktperson angeben.")
       .max(4, "Es sind höchstens vier Kontaktpersonen vorgesehen."),
 
-    keySafeStandortWunsch: z.string().trim().default(""),
-    zugangshinweise: z.string().trim().default(""),
+    keySafeStandortWunsch: kurztext(200).default(""),
+    zugangshinweise: kurztext(MAX_LANG).default(""),
 
-    hausarztName: z.string().trim().default(""),
-    hausarztTelefon: z.string().trim().default(""),
-    notfallhinweise: z.string().trim().default(""),
+    hausarztName: kurztext().default(""),
+    hausarztTelefon: kurztext(40).default(""),
+    notfallhinweise: kurztext(MAX_LANG).default(""),
 
     vdkMitglied: z.boolean(),
-    vdkMitgliedsnummer: z.string().trim().default(""),
+    vdkMitgliedsnummer: kurztext(40).default(""),
 
     zahlungspflichtigerIstTeilnehmer: z.boolean(),
     sepaKontoinhaber: pflichttext("Name des Kontoinhabers"),
-    sepaAnschrift: pflichttext("Anschrift des Kontoinhabers", 5),
+    sepaAnschrift: pflichttext("Anschrift des Kontoinhabers", 5, 200),
     sepaIban: z
       .string()
       .trim()
+      .max(42, "Diese IBAN ist zu lang.")
       .refine(ibanGueltig, "Diese IBAN ist nicht gültig. Bitte prüfen Sie die Eingabe."),
-    sepaBic: z.string().trim().default(""),
-    sepaBank: z.string().trim().default(""),
+    sepaBic: kurztext(20).default(""),
+    sepaBank: kurztext().default(""),
 
     bestaetigungen: z.object({
       leistungenUndGeraete: z.literal(true),
@@ -145,9 +197,7 @@ export const bestellungSchema = z
       datenschutz: z.literal(true),
     }),
 
-    unterschrift: z
-      .string()
-      .startsWith("data:image/png;base64,", "Bitte unterschreiben Sie den Vertrag."),
+    unterschrift: unterschriftSchema("Bitte unterschreiben Sie den Vertrag."),
     unterschriftOrt: pflichttext("Ort"),
   })
   .superRefine((wert, ctx) => {

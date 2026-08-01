@@ -159,11 +159,37 @@ einen bestimmten Leistungsumfang zu einem bestimmten Preis unterschrieben; eine
 Änderung daran wäre ein neuer Vertrag und keine Korrektur. Für solche Fälle ist
 der bestehende Vertrag zu kündigen und ein neuer abzuschließen.
 
-## 9. Wiederkehrende Aufgaben
+## 9. Fremde Tabellen im selben Supabase-Projekt
+
+Im Projekt `qbkjpfpxpoydtlasbbuz` liegen neben den Hausnotruf-Tabellen noch
+Tabellen einer anderen Anwendung: `admin_users`, `groups`, `links`, `icons`,
+`scans`, `settings`, `vehicles`, `treffpunkte`, `link_placements` und
+`group_link_order`.
+
+**Diese Tabellen sind mit dem öffentlichen anon-Schlüssel lesbar.** Der
+Sicherheitsbericht von Supabase (Advisors) meldet sie als „Public Can See
+Object in GraphQL Schema“. Für die Hausnotruf-Daten besteht dadurch keine
+Gefahr — deren Tabellen sind gesperrt und nur über den Server erreichbar.
+
+Ich habe daran **nichts geändert**, weil die Tabellen zu einer anderen
+Anwendung gehören und ein Entzug der Rechte diese lahmlegen könnte. Bitte mit
+den Verantwortlichen dieser Anwendung klären. Wenn die Daten nicht öffentlich
+sein sollen, lautet der Eingriff je Tabelle:
+
+```sql
+revoke select on public.<tabelle> from anon, authenticated;
+```
+
+Zu prüfen ist besonders `admin_users` — der Name legt nahe, dass dort
+Zugangsdaten oder Rollen liegen.
+
+## 10. Wiederkehrende Aufgaben
 
 | Aufgabe | Wie oft | Wer |
 |---|---|---|
 | Trichteransicht durchsehen, Absprungpunkte prüfen | monatlich | Backoffice |
 | Preisliste gegen die Excel-Vorlage abgleichen | bei jeder Preisänderung | Backoffice |
+| Sicherheitsbericht in Supabase (Advisors) durchsehen | vierteljährlich | Administrator |
+| Abhängigkeiten aktualisieren (`npm audit`) | vierteljährlich | Administrator |
 | Verträge nach Ablauf der Aufbewahrungsfrist löschen | jährlich | Administrator, derzeit von Hand |
 | Wiederherstellung aus der Sicherung testen | jährlich | Administrator |

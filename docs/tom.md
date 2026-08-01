@@ -48,6 +48,11 @@ Nachweise sind zur Akte zu nehmen.
     das Passwort gewechselt hat.
   - Mindestlänge 10 Zeichen; die E-Mail-Adresse und offensichtliche Wörter
     sind ausgeschlossen.
+- **Missbrauchsbremse gegen Passwortraten:** Höchstens zehn Anmeldeversuche je
+  Anschluss und zwanzig je Konto in einer Viertelstunde. Gezählt wird in der
+  Datenbank, damit die Grenze über alle Instanzen hinweg gilt; gespeichert wird
+  dabei nur ein Abdruck (SHA-256), nie die IP-Adresse selbst. Abgewiesene
+  Versuche zählen nicht mit, sonst ließe sich eine Sperre endlos verlängern.
 - **Offen:** In Supabase ist der Abgleich gegen bekannte Passwortlecks
   (HaveIBeenPwned) noch abgeschaltet. Er lässt sich unter
   Authentication → Policies mit einem Schalter aktivieren und sollte es auch.
@@ -117,6 +122,35 @@ Nachweise sind zur Akte zu nehmen.
   Zahlendreher auffallen, bevor eine Lastschrift scheitert.
 - CSV-Exporte entschärfen führende Sonderzeichen, damit Excel Zellinhalte nicht
   als Formel auswertet.
+- Jedes Textfeld hat eine Obergrenze; Unterschriften werden auf Format, Zeichen
+  und Größe geprüft. Ohne solche Grenzen ließen sich beliebig große Inhalte
+  einreichen, die gespeichert, ins PDF gezeichnet und versendet würden.
+
+### Schutz vor Angriffen aus dem Netz
+
+- **Fremde Herkunft:** Jede verändernde Anfrage (POST, PUT, PATCH, DELETE) wird
+  in der Middleware gegen die eigene Adresse geprüft. So kann keine fremde
+  Seite im Namen eines angemeldeten Mitarbeiters handeln, während dieser dort
+  surft. Die Prüfung steht an einer zentralen Stelle und lässt sich für neue
+  Routen nicht vergessen.
+- **Inhaltsrichtlinie (CSP):** Skripte laufen nur mit einem Einmalwert, den die
+  Middleware je Aufruf neu vergibt. Eingeschleustes Markup trägt ihn nicht und
+  bleibt wirkungslos. Ergänzend: kein Einbetten in fremde Seiten
+  (`frame-ancestors 'none'` und `X-Frame-Options: DENY`) — sonst ließe sich die
+  Unterschriftenfläche unsichtbar über eine fremde Schaltfläche legen.
+- **E-Mail-Inhalte:** Alle Werte aus Formularen werden vor dem Einsetzen in
+  HTML-Nachrichten entschärft. Andernfalls könnte über ein Eingabefeld ein
+  täuschend echter Link in die Nachricht ans Backoffice gelangen.
+- **Größen- und Mengengrenzen:** Anfragekörper sind je Endpunkt begrenzt
+  (8 KB bis 4 MB). Bestellungen, Zwischenstände, Trichterereignisse und
+  Passwortanfragen unterliegen zusätzlich einer Zugriffsbremse je Anschluss.
+- **Fehlermeldungen** nach außen sind allgemein gehalten; der Wortlaut der
+  Datenbank steht nur im Serverprotokoll.
+- **Kopfzeilen:** `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin` (der Pfad mit der
+  Vertragskennung verlässt die Seite nicht), `Permissions-Policy` ohne Kamera,
+  Mikrofon und Standort, `Strict-Transport-Security` für ein Jahr sowie
+  `X-Robots-Tag: noindex` auf Backoffice, Technik und Schnittstellen.
 
 ## 3. Verfügbarkeit und Belastbarkeit
 
@@ -134,9 +168,12 @@ Nachweise sind zur Akte zu nehmen.
   geschützt).
 - **Offen:** Die zehnjährige Aufbewahrungsfrist für abgeschlossene Verträge wird
   noch nicht automatisch durchgesetzt.
-- **Offen:** Es gibt keine Auswertung fehlgeschlagener Anmeldeversuche.
-  Supabase begrenzt Anmeldeversuche selbst; eine eigene Auswertung wäre
-  zusätzlich sinnvoll.
+- Fehlgeschlagene Anmeldeversuche werden begrenzt (siehe Zugangskontrolle).
+  Die Begrenzung musste die Anwendung selbst übernehmen: Die Anmeldung läuft
+  über den Server, weshalb Supabase alle Versuche unter derselben Adresse sieht
+  und seine eigene Begrenzung dort nicht greifen würde.
+- **Offen:** Es gibt keine Auswertung oder Meldung fehlgeschlagener
+  Anmeldeversuche. Sie werden abgewehrt, aber niemand wird darauf aufmerksam.
 
 ## 5. Zusammenfassung der offenen Punkte
 
@@ -148,3 +185,5 @@ Nachweise sind zur Akte zu nehmen.
 | Automatische Löschung nach zehn Jahren fehlt | Erfordert das Erfassen des Vertragsendes |
 | Auftragsverarbeitungsverträge Vercel und Supabase | Noch abzuschließen |
 | Wiederherstellungstest | Noch einzurichten |
+| Keine Meldung bei gehäuften Fehlanmeldungen | Angriffe werden abgewehrt, fallen aber niemandem auf |
+| Fremde Tabellen im selben Supabase-Projekt öffentlich lesbar | Gehören zu einer anderen Anwendung, siehe Betriebshandbuch |

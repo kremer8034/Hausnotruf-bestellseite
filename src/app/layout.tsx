@@ -15,6 +15,16 @@ export const viewport: Viewport = {
   themeColor: "#e60005",
 };
 
+/**
+ * Jede Seite wird bei Aufruf erzeugt.
+ *
+ * Grund ist die Inhaltsrichtlinie: Sie erlaubt Skripte nur mit dem Einmalwert,
+ * den die Middleware je Aufruf vergibt. Eine beim Bauen vorgerenderte Seite
+ * trüge einen alten Wert und bliebe ohne Skripte – Formulare würden dort nicht
+ * mehr funktionieren. Bei dieser Seitenzahl kostet das praktisch nichts.
+ */
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

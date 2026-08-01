@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db, ladeStammdaten } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
+import { htmlText, mailVorlage, sendeMail } from "@/lib/mail";
 import { findeAnfrage, passwortFehler } from "@/lib/passwort";
+import { leseKoerper, zuGrossAntwort, ZU_GROSS } from "@/lib/schutz";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,10 @@ const ABGELAUFEN =
   "Dieser Link ist abgelaufen oder wurde bereits verwendet. Bitte fordern Sie einen neuen an.";
 
 export async function POST(anfrage: NextRequest) {
-  const eingabe = schema.safeParse(await anfrage.json().catch(() => null));
+  const koerper = await leseKoerper(anfrage, 8 * 1024);
+  if (koerper === ZU_GROSS) return zuGrossAntwort();
+
+  const eingabe = schema.safeParse(koerper);
   if (!eingabe.success) {
     return NextResponse.json({ fehler: ABGELAUFEN }, { status: 400 });
   }
@@ -79,7 +83,7 @@ export async function POST(anfrage: NextRequest) {
           "Ihr Passwort wurde geändert",
           [
             `Das Passwort für Ihren Zugang zum Hausnotruf-Backoffice wurde soeben geändert. Alle bestehenden Anmeldungen wurden dabei beendet.`,
-            `<strong>Waren Sie das nicht?</strong> Dann wenden Sie sich bitte umgehend an die Administration: ${stammdaten.telefon}.`,
+            `<strong>Waren Sie das nicht?</strong> Dann wenden Sie sich bitte umgehend an die Administration: ${htmlText(stammdaten.telefon)}.`,
           ],
           `${stammdaten.verbandsName} · ${stammdaten.telefon}`,
         ),

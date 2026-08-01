@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { db, ladeStammdaten, naechsteVorgangsnummer } from "@/lib/db";
-import { mailVorlage, sendeMail } from "@/lib/mail";
+import { htmlText, mailVorlage, sendeMail } from "@/lib/mail";
+import {
+  fremdeHerkunftAntwort,
+  herkunftStimmt,
+  imRahmen,
+  klientAdresse,
+  leseKoerper,
+  zuGrossAntwort,
+  zuVieleAnfragenAntwort,
+  ZU_GROSS,
+} from "@/lib/schutz";
 import { paketById } from "@/lib/katalog";
 import { berechnePreis, euro } from "@/lib/preis";
 import { anredeFuer, empfaengerAdresse, erzeugeVertragsPdf, legeAb } from "@/lib/vertrag";
@@ -13,12 +23,27 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(anfrage: NextRequest) {
-  const rohdaten = await anfrage.json().catch(() => null);
+  if (!herkunftStimmt(anfrage)) return fremdeHerkunftAntwort();
+
+  // Zwei Unterschriften passen in 3 MB um ein Vielfaches; darüber hinaus gibt
+  // es keinen sachlichen Grund für eine so große Bestellung.
+  const rohdaten = await leseKoerper(anfrage, 3 * 1024 * 1024);
+  if (rohdaten === ZU_GROSS) return zuGrossAntwort();
   if (!rohdaten) {
     return NextResponse.json({ fehler: "Ungültige Anfrage" }, { status: 400 });
   }
 
-  const geprueft = bestellungSchema.safeParse(rohdaten.bestellung);
+  // Jede Bestellung erzeugt ein 27-seitiges PDF und zwei E-Mails mit Anhang.
+  // Ohne Bremse ließe sich die Seite als Versandhilfe missbrauchen.
+  if (!(await imRahmen("bestellung", klientAdresse(anfrage)))) {
+    return zuVieleAnfragenAntwort(
+      "Von diesem Anschluss sind in kurzer Zeit ungewöhnlich viele Bestellungen eingegangen. Bitte rufen Sie uns an, wenn Sie mehrere Verträge abschließen möchten.",
+    );
+  }
+
+  const geprueft = bestellungSchema.safeParse(
+    (rohdaten as Record<string, unknown>).bestellung,
+  );
   if (!geprueft.success) {
     return NextResponse.json(
       { fehler: "Bitte prüfen Sie Ihre Angaben.", felder: fehlerZuordnung(geprueft.error) },
@@ -71,11 +96,12 @@ export async function POST(anfrage: NextRequest) {
     if (dbFehler) throw new Error(`Speichern: ${dbFehler.message}`);
 
     // Entwurf abschließen, damit der Fortsetzen-Link ins Leere läuft.
-    if (typeof rohdaten.token === "string" && rohdaten.token.length === 64) {
+    const entwurfsToken = (rohdaten as Record<string, unknown>).token;
+    if (typeof entwurfsToken === "string" && /^[0-9a-f]{64}$/.test(entwurfsToken)) {
       await db()
         .from("entwuerfe")
         .update({ abgeschlossen: true, daten: {} })
-        .eq("token", rohdaten.token);
+        .eq("token", entwurfsToken);
     }
 
     await versendeMails(bestellung, stammdaten, vorgangsnummer, preis, pdf, dateiname);
@@ -91,12 +117,6 @@ export async function POST(anfrage: NextRequest) {
       { status: 500 },
     );
   }
-}
-
-function klientAdresse(anfrage: NextRequest): string | null {
-  const weitergeleitet = anfrage.headers.get("x-forwarded-for");
-  if (weitergeleitet) return weitergeleitet.split(",")[0]!.trim();
-  return anfrage.headers.get("x-real-ip");
 }
 
 async function versendeMails(
@@ -118,11 +138,11 @@ async function versendeMails(
   // schlägt eine Mail fehl, wird das protokolliert, aber nicht geworfen.
   if (empfaenger) {
     const absaetze = [
-      `${anrede},`,
+      `${htmlText(anrede)},`,
       `vielen Dank für Ihre Bestellung. Der Servicevertrag für den Hausnotruf ist damit geschlossen. Sie finden ihn vollständig ausgefüllt und unterschrieben im Anhang dieser E-Mail.`,
-      `<strong>Vorgangsnummer:</strong> ${vorgangsnummer}<br>
-       <strong>Teilnehmer:</strong> ${teilnehmerName}<br>
-       <strong>Paket:</strong> ${paket.name}<br>
+      `<strong>Vorgangsnummer:</strong> ${htmlText(vorgangsnummer)}<br>
+       <strong>Teilnehmer:</strong> ${htmlText(teilnehmerName)}<br>
+       <strong>Paket:</strong> ${htmlText(paket.name)}<br>
        <strong>Monatlich:</strong> ${euro(preis.summe.monatlich)}<br>
        <strong>Einmalig:</strong> ${euro(preis.summe.einmalig)}`,
       `<strong>Wie geht es weiter?</strong> Wir melden uns in den nächsten Arbeitstagen bei Ihnen, um einen Termin für die Installation zu vereinbaren. Bei diesem Termin richten wir das Gerät ein, bringen den Schlüsseltresor an und weisen in die Bedienung ein.`,
@@ -145,18 +165,20 @@ async function versendeMails(
     });
   }
 
+  // Alle Werte aus dem Formular laufen durch htmlText: Diese Nachricht landet
+  // im Postfach des Kreisverbands, und dort darf kein fremdes Markup ankommen.
   const backofficeAbsaetze = [
     `Über die Bestellseite ist ein neuer Vertrag eingegangen.`,
-    `<strong>Vorgangsnummer:</strong> ${vorgangsnummer}<br>
-     <strong>Teilnehmer:</strong> ${teilnehmerName}, geb. ${bestellung.teilnehmer.geburtsdatum}<br>
-     <strong>Anschrift:</strong> ${bestellung.teilnehmer.strasse}, ${bestellung.teilnehmer.plz} ${bestellung.teilnehmer.ort}<br>
-     <strong>Telefon:</strong> ${bestellung.teilnehmer.telefon}<br>
-     <strong>Paket:</strong> ${paket.name}${bestellung.optionen.length ? ` mit ${bestellung.optionen.join(", ")}` : ""}<br>
-     <strong>Pflegegrad:</strong> ${bestellung.pflegegrad === "ohne" ? "keiner" : bestellung.pflegegrad}<br>
+    `<strong>Vorgangsnummer:</strong> ${htmlText(vorgangsnummer)}<br>
+     <strong>Teilnehmer:</strong> ${htmlText(teilnehmerName)}, geb. ${htmlText(bestellung.teilnehmer.geburtsdatum)}<br>
+     <strong>Anschrift:</strong> ${htmlText(bestellung.teilnehmer.strasse)}, ${htmlText(bestellung.teilnehmer.plz)} ${htmlText(bestellung.teilnehmer.ort)}<br>
+     <strong>Telefon:</strong> ${htmlText(bestellung.teilnehmer.telefon)}<br>
+     <strong>Paket:</strong> ${htmlText(paket.name)}${bestellung.optionen.length ? ` mit ${htmlText(bestellung.optionen.join(", "))}` : ""}<br>
+     <strong>Pflegegrad:</strong> ${bestellung.pflegegrad === "ohne" ? "keiner" : htmlText(bestellung.pflegegrad)}<br>
      <strong>Kostenübernahme:</strong> ${bestellung.kostenuebernahme ? "beantragt" : "nein"}<br>
      <strong>Monatlich:</strong> ${euro(preis.summe.monatlich)} · <strong>Einmalig:</strong> ${euro(preis.summe.einmalig)}`,
     bestellung.besteller
-      ? `<strong>Bestellt durch:</strong> ${bestellung.besteller.vorname} ${bestellung.besteller.nachname}, ${bestellung.besteller.telefon}, ${bestellung.besteller.email}`
+      ? `<strong>Bestellt durch:</strong> ${htmlText(bestellung.besteller.vorname)} ${htmlText(bestellung.besteller.nachname)}, ${htmlText(bestellung.besteller.telefon)}, ${htmlText(bestellung.besteller.email)}`
       : `Der Teilnehmer hat selbst bestellt.`,
     `Der Vertrag liegt im Anhang und im Backoffice bereit. Der Vor-Ort-Teil (Geräteliste, Gesundheitsdaten, Inbetriebnahme) ist noch offen.`,
   ];
