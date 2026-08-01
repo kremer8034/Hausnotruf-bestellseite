@@ -39,7 +39,7 @@ export interface Trichterwerte {
  * echte Daten nachrechnen.
  */
 export function werteAus(ereignisse: Ereignis[], vertraege: number): Trichterwerte {
-  const sitzungen = new Map<
+  const vorgaenge = new Map<
     string,
     {
       gesehen: Set<Schritt>;
@@ -49,19 +49,40 @@ export function werteAus(ereignisse: Ereignis[], vertraege: number): Trichterwer
     }
   >();
 
-  for (const e of ereignisse) {
-    let s = sitzungen.get(e.sitzung_id);
+  // Wie oft in einem Tab schon abgeschlossen wurde. Siehe Kommentar unten.
+  const runde = new Map<string, number>();
+
+  // Die Ereignisse müssen nach Zeit sortiert sein, sonst landet ein Ereignis
+  // im falschen Vorgang.
+  for (const e of [...ereignisse].sort((a, b) => a.zeit.localeCompare(b.zeit))) {
+    /**
+     * Ein Tab kann mehrere Bestellungen enthalten.
+     *
+     * Die Kennung liegt im sessionStorage und überlebt den Abschluss. Wer
+     * danach im selben Tab weiterbestellt - etwa für den zweiten Elternteil -
+     * bekäme sonst dieselbe Kennung, und aus zwei Bestellungen würde eine.
+     * Genau daran passte die Abschlussquote nicht mehr zur Zahl der Verträge.
+     * Nach jedem Abschluss beginnt deshalb ein neuer Vorgang. Neuere Fassungen
+     * des Assistenten schneiden bereits im Browser; für die davor erfassten
+     * Daten schneidet diese Zählung nach.
+     */
+    const nummer = runde.get(e.sitzung_id) ?? 0;
+    const schluessel = `${e.sitzung_id}#${nummer}`;
+
+    let s = vorgaenge.get(schluessel);
     if (!s) {
       s = { gesehen: new Set(), beendet: new Set(), geraet: e.geraet, quelle: e.quelle };
-      sitzungen.set(e.sitzung_id, s);
+      vorgaenge.set(schluessel, s);
     }
     if (e.art === "angesehen") s.gesehen.add(e.schritt);
     if (e.art === "abgeschlossen") s.beendet.add(e.schritt);
     if (!s.geraet && e.geraet) s.geraet = e.geraet;
     if (!s.quelle && e.quelle) s.quelle = e.quelle;
+
+    if (e.schritt === "abgeschlossen") runde.set(e.sitzung_id, nummer + 1);
   }
 
-  const alle = [...sitzungen.values()];
+  const alle = [...vorgaenge.values()];
   const gesamtSitzungen = alle.length;
 
   /**
@@ -102,8 +123,16 @@ export function werteAus(ereignisse: Ereignis[], vertraege: number): Trichterwer
     gesamtSitzungen,
     sitzungenMitAbschluss,
     abschluesse: vertraege,
+    /**
+     * Die Quote ist zwingend das Verhältnis der beiden angezeigten Zahlen.
+     *
+     * Sonst stehen im Backoffice drei Werte nebeneinander, die einander
+     * widersprechen - genau das war der Anlass für diese Korrektur. Gedeckelt
+     * bei 100 %, falls eine Abschlussmeldung des Browsers verlorenging und
+     * dadurch mehr Verträge als Vorgänge gezählt würden.
+     */
     abschlussquote:
-      gesamtSitzungen > 0 ? sitzungenMitAbschluss / gesamtSitzungen : null,
+      gesamtSitzungen > 0 ? Math.min(1, vertraege / gesamtSitzungen) : null,
     stufen,
     groesstesLeck: sortiert[0] ?? null,
     geraete: zaehle(alle.map((s) => s.geraet ?? "unbekannt")),

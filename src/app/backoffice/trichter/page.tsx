@@ -34,7 +34,6 @@ export default async function Trichteransicht({
 
   const {
     gesamtSitzungen,
-    sitzungenMitAbschluss,
     abschluesse,
     abschlussquote,
     stufen,
@@ -80,7 +79,7 @@ export default async function Trichteransicht({
         <Kennzahl
           titel="Begonnene Bestellungen"
           wert={String(gesamtSitzungen)}
-          fussnote="Besucher, die den Assistenten geöffnet haben"
+          fussnote="Bestellvorgänge, die begonnen wurden"
         />
         <Kennzahl
           titel="Abgeschlossene Verträge"
@@ -94,7 +93,7 @@ export default async function Trichteransicht({
           }
           fussnote={
             gesamtSitzungen > 0
-              ? `${sitzungenMitAbschluss} von ${gesamtSitzungen} Besuchern`
+              ? `${abschluesse} von ${gesamtSitzungen} Bestellvorgängen`
               : undefined
           }
         />
@@ -104,7 +103,7 @@ export default async function Trichteransicht({
         <div className="mb-6 rounded-xl border border-brk-200 bg-brk-50 px-5 py-4">
           <p className="text-sm text-brk-900">
             <strong>Größter Absprungpunkt:</strong> {SCHRITT_LABEL[groesstesLeck.schritt]}{" "}
-            — {groesstesLeck.abbrueche} von {groesstesLeck.erreicht} Besuchern brechen
+            — {groesstesLeck.abbrueche} von {groesstesLeck.erreicht} Bestellvorgängen brechen
             hier ab ({Math.round(groesstesLeck.abbruchquote * 100)} %). Hier lohnt sich
             eine Vereinfachung am meisten.
           </p>

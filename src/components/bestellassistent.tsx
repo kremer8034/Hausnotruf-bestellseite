@@ -179,7 +179,8 @@ export function Bestellassistent({
 
   const schritt = ABLAUF[index];
 
-  // Sitzungskennung nur für die Trichteransicht: bleibt im Tab, kein Cookie.
+  // Kennung des Bestellvorgangs, nur für die Trichteransicht: bleibt im Tab,
+  // kein Cookie.
   useEffect(() => {
     let vorhanden = sessionStorage.getItem("hnr-sitzung");
     if (!vorhanden) {
@@ -187,6 +188,20 @@ export function Bestellassistent({
       sessionStorage.setItem("hnr-sitzung", vorhanden);
     }
     sitzungId.current = vorhanden;
+  }, []);
+
+  /**
+   * Beginnt nach einem Abschluss einen neuen Vorgang.
+   *
+   * Wer im selben Tab einen zweiten Vertrag abschließt - etwa für beide
+   * Elternteile - ist zwar derselbe Besucher, aber es sind zwei Bestellungen.
+   * Ohne diesen Schnitt zählte der Trichter Tabs statt Bestellungen, und die
+   * Abschlussquote passte nicht mehr zur Zahl der Verträge.
+   */
+  const neuerVorgang = useCallback(() => {
+    const neu = crypto.randomUUID();
+    sessionStorage.setItem("hnr-sitzung", neu);
+    sitzungId.current = neu;
   }, []);
 
   const melde = useCallback(
@@ -354,6 +369,9 @@ export function Bestellassistent({
       // kam. Und der Abschluss selbst.
       melde(schritt.id, "abgeschlossen");
       melde("abgeschlossen", "abgeschlossen");
+      // Erst melden, dann schneiden: Die Meldungen oben gehören noch zu diesem
+      // Vorgang, alles Weitere im Tab ist eine neue Bestellung.
+      neuerVorgang();
       setErfolg(ergebnis.vorgangsnummer);
     } catch {
       setSendefehler(
